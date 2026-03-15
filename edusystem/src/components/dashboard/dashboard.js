@@ -1,1630 +1,799 @@
 import { logout } from '../auth/authHandler.js'
-import { 
-  loadUserPermissions, 
-  filterSidebarByPermissions,
-  validateModuleAccess,
-  canCreateInModule,
-  canEditInModule,
-  canDeleteInModule
+import { supabase } from '../../lib/supabaseClient.js'
+import { renderUsersView } from '../../modules/users/usersView.js'
+import { renderCoursesView } from '../../modules/courses/coursesView.js'
+import {
+  canViewModule,
+  loadUserPermissions,
+  getCurrentRole
 } from '../../utils/permissions.js'
+import {
+  getTeacherPortalModules,
+  renderTeacherPortalView
+} from '../../portals/docentes/teacherPortal.js'
+import {
+  getStudentPortalModules,
+  renderStudentPortalView
+} from '../../portals/estudiantes/studentPortal.js'
 
-/**
- * Renderiza el dashboard según el rol del usuario
- */
 export async function renderDashboard(container, user, role) {
-  const dashboards = {
-    teacher: renderTeacherDashboard,
-    student: renderStudentDashboard,
-    parent: renderParentDashboard,
-    admin: renderAdminDashboard
-  }
-  
-  const renderFunction = dashboards[role] || renderAdminDashboard
-  renderFunction(container, user)
-  
-  // Cargar permisos del usuario
-  await loadUserPermissions(user.id)
-  
-  // Inicializar eventos después de renderizar
-  setTimeout(() => {
-    initializeLayoutEvents()
-    
-    // Filtrar sidebar según permisos
-    const sidebar = document.getElementById('sidebar')
-    if (sidebar) {
-      filterSidebarByPermissions(sidebar)
-    }
-  }, 100)
-}
-
-/**
- * Dashboard para Administradores
- */
-function renderAdminDashboard(container, user) {
-  const nombreUsuario = [
-    user.user_metadata?.primer_nombre,
-    user.user_metadata?.apellido_paterno
-  ].filter(Boolean).join(' ') || user.email.split('@')[0]
-  
-  container.innerHTML = `
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-brand">
-          <h5>
-            <i class="bi bi-mortarboard-fill"></i>
-            Edusy
-          </h5>
-          <button class="sidebar-close" id="sidebarClose">
-            <i class="bi bi-x-lg"></i>
-          </button>
-        </div>
-      </div>
-      
-      <nav class="sidebar-nav">
-        <div class="menu-section">
-          <div class="menu-section-title">Principal</div>
-          <ul class="nav flex-column">
-            <li class="nav-item">
-              <a class="nav-link active" href="#" data-view="dashboard">
-                <i class="bi bi-speedometer2"></i>
-                <span>Dashboard</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-        
-        <div class="menu-section">
-          <div class="menu-section-title">Académico</div>
-          <ul class="nav flex-column">
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="courses">
-                <i class="bi bi-book"></i>
-                <span>Cursos</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="students">
-                <i class="bi bi-people"></i>
-                <span>Estudiantes</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="teachers">
-                <i class="bi bi-person-badge"></i>
-                <span>Maestros</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="enrollments">
-                <i class="bi bi-card-checklist"></i>
-                <span>Inscripciones</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="grades">
-                <i class="bi bi-card-list"></i>
-                <span>Calificaciones</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="attendance">
-                <i class="bi bi-calendar-check"></i>
-                <span>Asistencia</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="tasks">
-                <i class="bi bi-list-check"></i>
-                <span>Tareas</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-        
-        <div class="menu-section">
-          <div class="menu-section-title">Recursos</div>
-          <ul class="nav flex-column">
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="resources">
-                <i class="bi bi-folder"></i>
-                <span>Biblioteca</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="messages">
-                <i class="bi bi-chat-dots"></i>
-                <span>Mensajes</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-        
-        <div class="menu-section">
-          <div class="menu-section-title">Sistema</div>
-          <ul class="nav flex-column">
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="users">
-                <i class="bi bi-person-gear"></i>
-                <span>Usuarios</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" data-view="settings">
-                <i class="bi bi-gear"></i>
-                <span>Configuración</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-      </nav>
-    </aside>
-    
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-    
-    <!-- Main Content Wrapper -->
-    <div class="main-wrapper" id="mainWrapper">
-      <!-- Header -->
-      <nav class="navbar top-navbar">
-        <div class="container-fluid d-flex align-items-center h-100">
-          <button class="hamburger-menu" id="sidebarToggle">
-            <i class="bi bi-list"></i>
-          </button>
-          
-          <nav aria-label="breadcrumb" class="d-none d-lg-block ms-3">
-            <ol class="breadcrumb mb-0">
-              <li class="breadcrumb-item"><a href="#">Inicio</a></li>
-              <li class="breadcrumb-item active">Dashboard</li>
-            </ol>
-          </nav>
-          
-          <div class="navbar-brand d-lg-none fw-bold me-auto">Edusy</div>
-          <div class="flex-grow-1 d-none d-lg-block"></div>
-          
-          <div class="d-flex align-items-center gap-2">
-            <!-- User Menu -->
-            <div class="dropdown">
-              <button class="btn btn-light btn-sm dropdown-toggle d-flex align-items-center gap-2" type="button" id="userDropdown" data-bs-toggle="dropdown">
-                <i class="bi bi-person-circle"></i>
-                <span class="d-none d-md-inline">${nombreUsuario}</span>
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="#"><i class="bi bi-person me-2"></i> Perfil</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="#" id="logoutBtn"><i class="bi bi-box-arrow-right me-2"></i> Cerrar Sesión</a></li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </nav>
-      
-      <!-- Dashboard Content -->
-      <main class="dashboard-content" id="main-content">
-        <div class="container-fluid">
-          <div class="mb-3">
-            <h1 class="h3 font-bold">Dashboard Overview</h1>
-            <p class="text-muted text-sm">Bienvenido de nuevo! Esto es lo que está pasando hoy.</p>
-          </div>
-          
-          <!-- Stats Cards -->
-          <div class="dashboard-row">
-            <div class="dashboard-grid grid-cols-4">
-              <div class="stats-card">
-                <div class="stats-card-label">Total Estudiantes</div>
-                <div class="stats-card-value">1,245</div>
-                <span class="stats-card-change positive">+12%</span>
-              </div>
-              
-              <div class="stats-card">
-                <div class="stats-card-label">Cursos Activos</div>
-                <div class="stats-card-value">48</div>
-                <span class="stats-card-change positive">+5%</span>
-              </div>
-              
-              <div class="stats-card">
-                <div class="stats-card-label">Maestros</div>
-                <div class="stats-card-value">86</div>
-                <span class="stats-card-change neutral">0%</span>
-              </div>
-              
-              <div class="stats-card">
-                <div class="stats-card-label">Promedio General</div>
-                <div class="stats-card-value">8.5</div>
-                <span class="stats-card-change positive">+2%</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Quick Actions -->
-          <div class="dashboard-row">
-            <div class="dashboard-card">
-              <div class="dashboard-card-header">
-                <h5 class="dashboard-card-title">Acciones Rápidas</h5>
-              </div>
-              <div class="dashboard-card-body">
-                <div class="quick-actions-grid">
-                  <a href="#" class="quick-action-item" data-view="courses">
-                    <i class="bi bi-plus-circle"></i>
-                    <span>Nuevo Curso</span>
-                  </a>
-                  <a href="#" class="quick-action-item" data-view="students">
-                    <i class="bi bi-person-plus"></i>
-                    <span>Registrar Estudiante</span>
-                  </a>
-                  <a href="#" class="quick-action-item" data-view="grades">
-                    <i class="bi bi-clipboard-check"></i>
-                    <span>Capturar Calificaciones</span>
-                  </a>
-                  <a href="#" class="quick-action-item" data-view="attendance">
-                    <i class="bi bi-calendar-check"></i>
-                    <span>Tomar Asistencia</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Recent Activity -->
-          <div class="dashboard-row">
-            <div class="dashboard-card">
-              <div class="dashboard-card-header">
-                <h5 class="dashboard-card-title">Actividad Reciente</h5>
-              </div>
-              <div class="dashboard-card-body">
-                <div class="activity-list">
-                  <div class="activity-item">
-                    <div class="activity-icon bg-primary">
-                      <i class="bi bi-person-plus"></i>
-                    </div>
-                    <div class="activity-content">
-                      <p class="mb-0">Nuevo estudiante registrado</p>
-                      <small class="text-muted">Hace 5 minutos</small>
-                    </div>
-                  </div>
-                  <div class="activity-item">
-                    <div class="activity-icon bg-success">
-                      <i class="bi bi-clipboard-check"></i>
-                    </div>
-                    <div class="activity-content">
-                      <p class="mb-0">Calificaciones capturadas - Matemáticas 101</p>
-                      <small class="text-muted">Hace 1 hora</small>
-                    </div>
-                  </div>
-                  <div class="activity-item">
-                    <div class="activity-icon bg-info">
-                      <i class="bi bi-calendar-check"></i>
-                    </div>
-                    <div class="activity-content">
-                      <p class="mb-0">Asistencia tomada - Grupo A</p>
-                      <small class="text-muted">Hace 2 horas</small>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-  `
-  
-  addDashboardStyles()
-  addLogoutListener()
-}
-
-/**
- * Renderiza el contenido principal del dashboard (home)
- */
-function renderDashboardHome(container) {
-  container.innerHTML = `
-    <div class="container-fluid">
-      <div class="mb-3">
-        <h1 class="h3 font-bold">Dashboard Overview</h1>
-        <p class="text-muted text-sm">Bienvenido de nuevo! Esto es lo que está pasando hoy.</p>
-      </div>
-      
-      <!-- Stats Cards -->
-      <div class="dashboard-row">
-        <div class="dashboard-grid grid-cols-4">
-          <div class="stats-card">
-            <div class="stats-card-label">Total Estudiantes</div>
-            <div class="stats-card-value">1,245</div>
-            <span class="stats-card-change positive">+12%</span>
-          </div>
-          
-          <div class="stats-card">
-            <div class="stats-card-label">Cursos Activos</div>
-            <div class="stats-card-value">48</div>
-            <span class="stats-card-change positive">+5%</span>
-          </div>
-          
-          <div class="stats-card">
-            <div class="stats-card-label">Maestros</div>
-            <div class="stats-card-value">86</div>
-            <span class="stats-card-change neutral">0%</span>
-          </div>
-          
-          <div class="stats-card">
-            <div class="stats-card-label">Promedio General</div>
-            <div class="stats-card-value">8.5</div>
-            <span class="stats-card-change positive">+2%</span>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Quick Actions -->
-      <div class="dashboard-row">
-        <div class="dashboard-card">
-          <div class="dashboard-card-header">
-            <h5 class="dashboard-card-title">Acciones Rápidas</h5>
-          </div>
-          <div class="dashboard-card-body">
-            <div class="quick-actions-grid">
-              <a href="#/courses" class="quick-action-item">
-                <i class="bi bi-plus-circle"></i>
-                <span>Nuevo Curso</span>
-              </a>
-              <a href="#" class="quick-action-item" data-view="students">
-                <i class="bi bi-person-plus"></i>
-                <span>Registrar Estudiante</span>
-              </a>
-              <a href="#" class="quick-action-item" data-view="grades">
-                <i class="bi bi-clipboard-check"></i>
-                <span>Capturar Calificaciones</span>
-              </a>
-              <a href="#" class="quick-action-item" data-view="attendance">
-                <i class="bi bi-calendar-check"></i>
-                <span>Tomar Asistencia</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Recent Activity -->
-      <div class="dashboard-row">
-        <div class="dashboard-card">
-          <div class="dashboard-card-header">
-            <h5 class="dashboard-card-title">Actividad Reciente</h5>
-          </div>
-          <div class="dashboard-card-body">
-            <div class="activity-list">
-              <div class="activity-item">
-                <div class="activity-icon bg-primary">
-                  <i class="bi bi-person-plus"></i>
-                </div>
-                <div class="activity-content">
-                  <p class="mb-0">Nuevo estudiante registrado</p>
-                  <small class="text-muted">Hace 5 minutos</small>
-                </div>
-              </div>
-              <div class="activity-item">
-                <div class="activity-icon bg-success">
-                  <i class="bi bi-clipboard-check"></i>
-                </div>
-                <div class="activity-content">
-                  <p class="mb-0">Calificaciones capturadas - Matemáticas 101</p>
-                  <small class="text-muted">Hace 1 hora</small>
-                </div>
-              </div>
-              <div class="activity-item">
-                <div class="activity-icon bg-info">
-                  <i class="bi bi-calendar-check"></i>
-                </div>
-                <div class="activity-content">
-                  <p class="mb-0">Asistencia tomada - Grupo A</p>
-                  <small class="text-muted">Hace 2 horas</small>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `
-  
-  // Re-attach listeners para acciones rápidas
-  setTimeout(() => {
-    const quickActions = document.querySelectorAll('.quick-action-item[data-view]')
-    quickActions.forEach(action => {
-      action.addEventListener('click', async (e) => {
-        e.preventDefault()
-        const view = action.getAttribute('data-view')
-        const mainContent = document.getElementById('main-content')
-        
-        switch (view) {
-          case 'students':
-            const { renderStudentsView } = await import('../../modules/students/studentsView.js')
-            renderStudentsView(mainContent)
-            break
-          case 'grades':
-            mainContent.innerHTML = '<div class="alert alert-info m-4">Módulo de calificaciones en construcción</div>'
-            break
-          case 'attendance':
-            const { renderAttendanceView } = await import('../../modules/attendance/attendanceView.js')
-            renderAttendanceView(mainContent)
-            break
-        }
-      })
-    })
-  }, 100)
-}
-
-/**
- * Otros roles usan el mismo layout (simplificado por ahora)
- */
-function renderTeacherDashboard(container, user) {
-  renderAdminDashboard(container, user)
-}
-
-function renderStudentDashboard(container, user) {
-  renderAdminDashboard(container, user)
-}
-
-function renderParentDashboard(container, user) {
-  renderAdminDashboard(container, user)
-}
-
-/**
- * Inicializa eventos del layout
- */
-function initializeLayoutEvents() {
-  const sidebar = document.getElementById('sidebar')
-  const sidebarToggle = document.getElementById('sidebarToggle')
-  const sidebarClose = document.getElementById('sidebarClose')
-  const sidebarOverlay = document.getElementById('sidebarOverlay')
-  const navLinks = document.querySelectorAll('.nav-link')
-  
-  if (!sidebar || !sidebarToggle) return
-  
-  // Toggle sidebar
-  sidebarToggle.addEventListener('click', () => {
-    sidebar.classList.toggle('active')
-    sidebarOverlay?.classList.toggle('active')
-  })
-  
-  // Close sidebar
-  sidebarClose?.addEventListener('click', () => {
-    sidebar.classList.remove('active')
-    sidebarOverlay?.classList.remove('active')
-  })
-  
-  sidebarOverlay?.addEventListener('click', () => {
-    sidebar.classList.remove('active')
-    sidebarOverlay.classList.remove('active')
-  })
-  
-  // Nav links activos
-  navLinks.forEach(link => {
-    link.addEventListener('click', async (e) => {
-      e.preventDefault()
-      const view = link.getAttribute('data-view')
-      
-      // Validar permisos de acceso al módulo
-      try {
-        if (view !== 'dashboard') {
-          validateModuleAccess(view)
-        }
-      } catch (error) {
-        alert(error.message)
-        return
-      }
-      
-      // Actualizar nav activo
-      navLinks.forEach(l => l.classList.remove('active'))
-      link.classList.add('active')
-      
-      // Cargar la vista correspondiente
-      const mainContent = document.getElementById('main-content')
-      if (!mainContent) return
-      
-      // Mostrar loading
-      mainContent.innerHTML = `
-        <div class="container-fluid">
-          <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Cargando...</span>
-            </div>
-          </div>
-        </div>
-      `
-      
-      try {
-        switch (view) {
-          case 'dashboard':
-            renderDashboardHome(mainContent)
-            window.location.hash = '' // Limpiar hash
-            break
-          case 'courses':
-            const { renderCoursesView } = await import('../../modules/courses/coursesView.js')
-            renderCoursesView(mainContent)
-            break
-          case 'teachers':
-            const { renderTeachersView } = await import('../../modules/teachers/teachersView.js')
-            renderTeachersView(mainContent)
-            break
-          case 'students':
-            const { renderStudentsView } = await import('../../modules/students/studentsView.js')
-            renderStudentsView(mainContent)
-            break
-          case 'enrollments':
-            const { renderEnrollmentsView } = await import('../../modules/enrollments/enrollmentsView.js')
-            renderEnrollmentsView(mainContent)
-            break
-          case 'attendance':
-            const { renderAttendanceView } = await import('../../modules/attendance/attendanceView.js')
-            renderAttendanceView(mainContent)
-            break
-          case 'users':
-            const { renderUsersView } = await import('../../modules/users/usersView.js')
-            renderUsersView(mainContent)
-            break
-          case 'settings':
-            const { renderSettingsView } = await import('../../modules/settings/settingsView.js')
-            renderSettingsView(mainContent)
-            break
-          default:
-            mainContent.innerHTML = `
-              <div class="container-fluid">
-                <div class="text-center py-5">
-                  <i class="bi bi-wrench" style="font-size: 4rem; color: #6b7280;"></i>
-                  <h3 class="mt-3">Módulo en Construcción</h3>
-                  <p class="text-muted">El módulo "${link.textContent.trim()}" estará disponible pronto.</p>
-                </div>
-              </div>
-            `
-        }
-      } catch (error) {
-        console.error('Error cargando módulo:', error)
-        mainContent.innerHTML = `
-          <div class="container-fluid">
-            <div class="alert alert-danger">
-              <i class="bi bi-exclamation-triangle me-2"></i>
-              Error al cargar el módulo: ${error.message}
-            </div>
-          </div>
-        `
-      }
-      
-      // Cerrar sidebar en móvil
-      if (window.innerWidth < 992) {
-        sidebar.classList.remove('active')
-        sidebarOverlay?.classList.remove('active')
-      }
-    })
-  })
-  
-  // Agregar soporte para hash routing (para rutas parametrizadas como #/course/123)
-  initializeHashRouting()
-}
-
-/**
- * Inicializa el sistema de routing basado en hash para rutas parametrizadas
- */
-function initializeHashRouting() {
-  // Manejar cambios en el hash
-  window.addEventListener('hashchange', handleHashRoute)
-  
-  // Manejar ruta inicial si existe
-  if (window.location.hash) {
-    handleHashRoute()
-  }
-}
-
-/**
- * Maneja las rutas basadas en hash
- */
-async function handleHashRoute() {
-  const hash = window.location.hash.slice(1) // Quitar el #
-  
-  if (!hash || hash === '/' || hash === '') {
-    // Sin hash, mostrar dashboard home
-    const mainContent = document.getElementById('main-content')
-    if (mainContent && !mainContent.querySelector('.dashboard-row')) {
-      renderDashboardHome(mainContent)
-    }
+  if (!container) {
+    console.error('❌ Error: Container es null en renderDashboard')
     return
   }
   
-  const mainContent = document.getElementById('main-content')
-  if (!mainContent) return
-  
-  // Parsear ruta con parámetros: /course/123
-  const parts = hash.split('/')
-  const route = parts[1] // El primer elemento después del /
-  
-  switch (route) {
-    case 'course':
-      const sectionId = parts[2]
-      if (sectionId) {
-        const { renderCourseDetailView } = await import('../../modules/courses/courseDetailView.js')
-        renderCourseDetailView(mainContent, sectionId)
-      }
-      break
-    case 'courses':
-      const { renderCoursesView } = await import('../../modules/courses/coursesView.js')
-      renderCoursesView(mainContent)
-      break
-    default:
-      // Ruta no reconocida, mostrar dashboard
-      console.log('Ruta no reconocida:', hash)
-      renderDashboardHome(mainContent)
+  await loadUserPermissions(user.id, role)
+
+  const resolvedRole = getCurrentRole() || role || 'student'
+  const portal = buildPortalConfig(resolvedRole, user)
+
+  renderPortalShell(container, user, portal)
+  initializePortalEvents(container, user, portal)
+  addLogoutListener()
+  addDashboardStyles()
+
+  await openModule(portal.defaultModule, user, portal)
+}
+
+function buildPortalConfig(role, user) {
+  const roleMap = {
+    admin: {
+      title: 'Portal Administrativo',
+      subtitle: 'Control de usuarios, permisos, cursos y datos generales',
+      modules: getAdminPortalModules(),
+      defaultModule: 'dashboard'
+    },
+    teacher: {
+      title: 'Portal de Docentes',
+      subtitle: 'Gestión académica diaria por grupo',
+      modules: getTeacherPortalModules(),
+      defaultModule: 'dashboard'
+    },
+    student: {
+      title: 'Portal de Estudiantes',
+      subtitle: 'Seguimiento académico y progreso personal',
+      modules: getStudentPortalModules(),
+      defaultModule: 'dashboard'
+    },
+    parent: {
+      title: 'Portal de Estudiantes',
+      subtitle: 'Seguimiento académico y progreso personal',
+      modules: getStudentPortalModules(),
+      defaultModule: 'dashboard'
+    }
+  }
+
+  const selected = roleMap[role] || roleMap.student
+  const visibleModules = selected.modules.filter(module => canViewModule(module.id))
+
+  return {
+    ...selected,
+    role,
+    modules: visibleModules.length ? visibleModules : [selected.modules[0]],
+    userName: buildDisplayName(user)
   }
 }
 
-/**
- * Agregar listener de logout
- */
-function addLogoutListener() {
-  setTimeout(() => {
-    const logoutBtn = document.getElementById('logoutBtn')
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', async (e) => {
-        e.preventDefault()
-        if (confirm('¿Estás seguro de cerrar sesión?')) {
-          await logout()
-        }
-      })
+function getAdminPortalModules() {
+  return [
+    {
+      id: 'dashboard',
+      label: 'Datos Generales',
+      icon: 'bi-bar-chart-line-fill',
+      description: 'Indicadores institucionales'
+    },
+    {
+      id: 'users',
+      label: 'Usuarios y Permisos',
+      icon: 'bi-people-fill',
+      description: 'Alta de usuarios y roles'
+    },
+    {
+      id: 'courses',
+      label: 'Cursos',
+      icon: 'bi-journal-plus',
+      description: 'Creación y configuración de cursos'
     }
-  }, 100)
+  ]
 }
 
-/**
- * Agregar estilos del dashboard
- */
+function renderPortalShell(container, user, portal) {
+  const navItems = portal.modules.map((module, index) => `
+    <button class="portal-nav-item ${index === 0 ? 'active' : ''}" data-view="${module.id}">
+      <i class="bi ${module.icon}"></i>
+      <span>${module.label}</span>
+      <small>${module.description}</small>
+    </button>
+  `).join('')
+
+  container.innerHTML = `
+    <div class="portal-shell">
+      <aside class="portal-sidebar" id="portalSidebar">
+        <div class="portal-brand">
+          <div class="portal-brand-mark">ED</div>
+          <div>
+            <h1>EduSystem</h1>
+            <p>${portal.title}</p>
+          </div>
+        </div>
+
+        <nav class="portal-nav">${navItems}</nav>
+
+        <div class="portal-sidebar-footer">
+          <small>Sesión activa</small>
+          <strong>${portal.userName}</strong>
+          <button class="btn btn-outline-light btn-sm mt-2" id="logoutBtn" type="button">
+            <i class="bi bi-box-arrow-right me-1"></i>Salir
+          </button>
+        </div>
+      </aside>
+
+      <div class="portal-main">
+        <header class="portal-topbar">
+          <div class="d-flex align-items-center gap-2">
+            <button class="portal-menu-btn" id="sidebarToggle" type="button">
+              <i class="bi bi-list"></i>
+            </button>
+            <div>
+              <h2>${portal.title}</h2>
+              <p>${portal.subtitle}</p>
+            </div>
+          </div>
+
+          <div class="portal-user-pill">
+            <span>${portal.userName}</span>
+            <small>${user.email}</small>
+          </div>
+        </header>
+
+        <main class="portal-content" id="main-content"></main>
+      </div>
+    </div>
+
+    <div class="portal-overlay" id="portalOverlay"></div>
+  `
+}
+
+function initializePortalEvents(container, user, portal) {
+  const sidebar = container.querySelector('#portalSidebar')
+  const overlay = container.querySelector('#portalOverlay')
+  const toggleBtn = container.querySelector('#sidebarToggle')
+  const navButtons = Array.from(container.querySelectorAll('.portal-nav-item[data-view]'))
+
+  toggleBtn?.addEventListener('click', () => {
+    sidebar?.classList.toggle('open')
+    overlay?.classList.toggle('open')
+  })
+
+  overlay?.addEventListener('click', () => {
+    sidebar?.classList.remove('open')
+    overlay?.classList.remove('open')
+  })
+
+  navButtons.forEach(button => {
+    button.addEventListener('click', async () => {
+      const moduleId = button.dataset.view
+
+      if (!canViewModule(moduleId)) {
+        alert('No tienes permisos para acceder a este módulo.')
+        return
+      }
+
+      navButtons.forEach(item => item.classList.remove('active'))
+      button.classList.add('active')
+
+      await openModule(moduleId, user, portal)
+
+      if (window.innerWidth < 992) {
+        sidebar?.classList.remove('open')
+        overlay?.classList.remove('open')
+      }
+    })
+  })
+
+  // Botones dinámicos de vistas internas (docente/estudiante)
+  container.addEventListener('click', async event => {
+    const teacherTarget = event.target.closest('[data-teacher-view]')
+    const studentTarget = event.target.closest('[data-student-view]')
+
+    if (teacherTarget) {
+      const moduleId = teacherTarget.dataset.teacherView
+      await activateModuleFromShortcut(moduleId, navButtons, user, portal)
+    }
+
+    if (studentTarget) {
+      const moduleId = studentTarget.dataset.studentView
+      await activateModuleFromShortcut(moduleId, navButtons, user, portal)
+    }
+  })
+}
+
+async function activateModuleFromShortcut(moduleId, navButtons, user, portal) {
+  if (!canViewModule(moduleId)) return
+
+  navButtons.forEach(item => {
+    item.classList.toggle('active', item.dataset.view === moduleId)
+  })
+
+  await openModule(moduleId, user, portal)
+}
+
+async function openModule(moduleId, user, portal) {
+  const mainContent = document.getElementById('main-content')
+  if (!mainContent) return
+
+  mainContent.innerHTML = `
+    <div class="portal-loading">
+      <div class="spinner-border text-primary" role="status"></div>
+      <p>Cargando módulo...</p>
+    </div>
+  `
+
+  try {
+    if (portal.role === 'admin') {
+      await renderAdminPortalView(mainContent, moduleId)
+      return
+    }
+
+    if (portal.role === 'teacher') {
+      await renderTeacherPortalView(mainContent, moduleId, user)
+      return
+    }
+
+    await renderStudentPortalView(mainContent, moduleId, user)
+  } catch (error) {
+    console.error('Error cargando módulo:', error)
+    mainContent.innerHTML = `
+      <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        Error al cargar módulo: ${error.message}
+      </div>
+    `
+  }
+}
+
+async function renderAdminPortalView(container, moduleId) {
+  switch (moduleId) {
+    case 'dashboard':
+      await renderAdminHome(container)
+      break
+    case 'users':
+      await renderUsersView(container)
+      break
+    case 'courses':
+      await renderCoursesView(container)
+      break
+    default:
+      container.innerHTML = '<div class="alert alert-warning">Módulo administrativo no disponible.</div>'
+  }
+}
+
+async function renderAdminHome(container) {
+  const [profilesResult, coursesResult, enrollmentsResult] = await Promise.all([
+    supabase.from('profiles').select('id, rol, activo'),
+    supabase.from('courses').select('id, activo'),
+    supabase.from('enrollments').select('id, status')
+  ])
+
+  if (profilesResult.error || coursesResult.error || enrollmentsResult.error) {
+    const message = profilesResult.error?.message || coursesResult.error?.message || enrollmentsResult.error?.message
+    container.innerHTML = `<div class="alert alert-danger">No fue posible cargar datos generales: ${message}</div>`
+    return
+  }
+
+  const profiles = profilesResult.data || []
+  const courses = coursesResult.data || []
+  const enrollments = enrollmentsResult.data || []
+
+  const adminCount = profiles.filter(item => item.rol === 'admin' && item.activo).length
+  const teacherCount = profiles.filter(item => item.rol === 'teacher' && item.activo).length
+  const studentCount = profiles.filter(item => item.rol === 'student' && item.activo).length
+  const activeCourses = courses.filter(item => item.activo).length
+  const activeEnrollments = enrollments.filter(item => item.status === 'enrolled').length
+
+  container.innerHTML = `
+    <section class="portal-hero portal-hero-admin">
+      <div>
+        <h2>Datos Generales</h2>
+        <p>Monitoreo general de la operación académica institucional.</p>
+      </div>
+      <div class="portal-hero-chip">
+        <i class="bi bi-shield-check"></i>
+        <span>Acceso Administrativo</span>
+      </div>
+    </section>
+
+    <section class="portal-grid portal-grid-3">
+      <article class="portal-card metric">
+        <small>Usuarios activos</small>
+        <h3>${adminCount + teacherCount + studentCount}</h3>
+      </article>
+      <article class="portal-card metric">
+        <small>Cursos activos</small>
+        <h3>${activeCourses}</h3>
+      </article>
+      <article class="portal-card metric">
+        <small>Inscripciones vigentes</small>
+        <h3>${activeEnrollments}</h3>
+      </article>
+    </section>
+
+    <section class="portal-grid portal-grid-3">
+      <article class="portal-card">
+        <h4>Administradores activos</h4>
+        <p class="portal-big-number">${adminCount}</p>
+      </article>
+      <article class="portal-card">
+        <h4>Docentes activos</h4>
+        <p class="portal-big-number">${teacherCount}</p>
+      </article>
+      <article class="portal-card">
+        <h4>Estudiantes activos</h4>
+        <p class="portal-big-number">${studentCount}</p>
+      </article>
+    </section>
+  `
+}
+
+function addLogoutListener() {
+  const logoutBtn = document.getElementById('logoutBtn')
+  if (!logoutBtn) return
+
+  logoutBtn.addEventListener('click', async () => {
+    if (confirm('¿Deseas cerrar la sesión actual?')) {
+      await logout()
+    }
+  })
+}
+
+function buildDisplayName(user) {
+  return [
+    user.user_metadata?.primer_nombre,
+    user.user_metadata?.apellido_paterno
+  ].filter(Boolean).join(' ') || user.email.split('@')[0]
+}
+
 function addDashboardStyles() {
-  if (document.getElementById('dashboard-styles')) return
-  
-  const link = document.createElement('link')
-  link.id = 'dashboard-styles'
-  link.rel = 'stylesheet'
-  link.href = 'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css'
-  document.head.appendChild(link)
-  
-  const style = document.createElement('style')
-  style.id = 'dashboard-custom-styles'
-  style.textContent = `
-    /* Importar estilos de kiaalap */
-    @import url('../src/css/dashboard.css');
-    
-    :root {
-      --sidebar-width: 220px;
-      --header-height: 60px;
-      --sidebar-bg: #1e293b;
-      --body-bg: #f5f7fa;
-      --border-color: #e5e7eb;
-      --text-muted: #6b7280;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
-      --shadow-lg: 0 10px 25px rgba(0,0,0,0.1);
-      --transition-speed: 0.3s;
-      --border-radius: 8px;
-    }
-    
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      background: var(--body-bg);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      overflow-x: hidden;
-    }
-    
-    /* Sidebar */
-    .sidebar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: var(--sidebar-width);
-      height: 100vh;
-      background: var(--sidebar-bg);
-      z-index: 1040;
-      transition: transform var(--transition-speed) ease;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    
-    .sidebar-header {
-      padding: 1rem;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-    
-    .sidebar-brand {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      color: white;
-    }
-    
-    .sidebar-brand h5 {
-      margin: 0;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 1.25rem;
-    }
-    
-    .sidebar-close {
-      background: none;
-      border: none;
-      color: white;
-      cursor: pointer;
-      font-size: 1.25rem;
-      display: none;
-    }
-    
-    .sidebar-nav {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1rem;
-    }
-    
-    .sidebar-nav::-webkit-scrollbar {
-      width: 6px;
-    }
-    
-    .sidebar-nav::-webkit-scrollbar-track {
-      background: rgba(255,255,255,0.05);
-    }
-    
-    .sidebar-nav::-webkit-scrollbar-thumb {
-      background: rgba(255,255,255,0.2);
-      border-radius: 3px;
-    }
-    
-    .menu-section {
-      margin-bottom: 1.5rem;
-    }
-    
-    .menu-section-title {
-      color: rgba(255,255,255,0.4);
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 0.5rem;
-      padding: 0 0.75rem;
-    }
-    
-    .nav-link {
-      color: rgba(255,255,255,0.6);
-      padding: 0.625rem 0.75rem;
-      border-radius: var(--border-radius);
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 0.25rem;
-      transition: all 0.2s ease;
-      text-decoration: none;
-    }
-    
-    .nav-link:hover {
-      background: rgba(255,255,255,0.05);
-      color: white;
-    }
-    
-    .nav-link.active {
-      background: #6366f1;
-      color: white;
-    }
-    
-    .nav-link i {
-      font-size: 1.125rem;
-      width: 20px;
-      text-align: center;
-    }
-    
-    .sidebar-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.5);
-      z-index: 1039;
-      display: none;
-    }
-    
-    .sidebar-overlay.active {
-      display: block;
-    }
-    
-    /* Main Wrapper */
-    .main-wrapper {
-      margin-left: var(--sidebar-width);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      transition: margin-left var(--transition-speed) ease;
-    }
-    
-    /* Top Navbar */
-    .top-navbar {
-      background: white;
-      height: var(--header-height);
-      border-bottom: 1px solid var(--border-color);
-      position: sticky;
-      top: 0;
-      z-index: 1030;
-    }
-    
-    .hamburger-menu {
-      background: none;
-      border: none;
-      font-size: 1.5rem;
-      cursor: pointer;
-      color: #333;
-      display: none;
-    }
-    
-    .breadcrumb {
-      background: none;
-      padding: 0;
-      margin: 0;
-    }
-    
-    .breadcrumb-item {
-      font-size: 0.875rem;
-    }
-    
-    .breadcrumb-item a {
-      color: #6366f1;
-      text-decoration: none;
-    }
-    
-    .breadcrumb-item.active {
-      color: var(--text-muted);
-    }
-    
-    /* Dashboard Content */
-    .dashboard-content {
-      flex: 1;
-      padding: 2rem;
-    }
-    
-    .dashboard-row {
-      margin-bottom: 1.5rem;
-    }
-    
-    .dashboard-grid {
-      display: grid;
-      gap: 1.5rem;
-    }
-    
-    .grid-cols-4 {
-      grid-template-columns: repeat(4, 1fr);
-    }
-    
-    /* Stats Card */
-    .stats-card {
-      background: white;
-      padding: 1.5rem;
-      border-radius: var(--border-radius);
-      box-shadow: var(--shadow-sm);
-      border: 1px solid var(--border-color);
-    }
-    
-    .stats-card-label {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
-    }
-    
-    .stats-card-value {
-      font-size: 1.875rem;
-      font-weight: 700;
-      color: #1e293b;
-      margin-bottom: 0.5rem;
-    }
-    
-    .stats-card-change {
-      font-size: 0.875rem;
-      font-weight: 500;
-    }
-    
-    .stats-card-change.positive {
-      color: #10b981;
-    }
-    
-    .stats-card-change.neutral {
-      color: var(--text-muted);
-    }
-    
-    /* Dashboard Card */
-    .dashboard-card {
-      background: white;
-      border-radius: var(--border-radius);
-      box-shadow: var(--shadow-sm);
-      border: 1px solid var(--border-color);
-    }
-    
-    .dashboard-card-header {
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid var(--border-color);
-    }
-    
-    .dashboard-card-title {
-      margin: 0;
-      font-size: 1.125rem;
-      font-weight: 600;
-      color: #1e293b;
-    }
-    
-    .dashboard-card-body {
-      padding: 1.5rem;
-    }
-    
-    /* Quick Actions */
-    .quick-actions-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1rem;
-    }
-    
-    .quick-action-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 1.5rem 1rem;
-      background: #f8fafc;
-      border-radius: var(--border-radius);
-      text-decoration: none;
-      color: #1e293b;
-      transition: all 0.2s ease;
-      border: 1px solid var(--border-color);
-    }
-    
-    .quick-action-item:hover {
-      background: #6366f1;
-      color: white;
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-lg);
-    }
-    
-    .quick-action-item i {
-      font-size: 2rem;
-    }
-    
-    .quick-action-item span {
-      font-size: 0.875rem;
-      font-weight: 500;
-      text-align: center;
-    }
-    
-    /* Activity List */
-    .activity-list {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-    
-    .activity-item {
-      display: flex;
-      gap: 1rem;
-      align-items: start;
-    }
-    
-    .activity-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      flex-shrink: 0;
-    }
-    
-    .activity-icon.bg-primary {
-      background: #6366f1;
-    }
-    
-    .activity-icon.bg-success {
-      background: #10b981;
-    }
-    
-    .activity-icon.bg-info {
-      background: #06b6d4;
-    }
-    
-    .activity-content p {
-      color: #1e293b;
-      font-weight: 500;
-    }
-    
-    .activity-content small {
-      color: var(--text-muted);
-    }
-    
-    /* Responsive */
-    @media (max-width: 992px) {
-      .sidebar {
-        transform: translateX(-100%);
+  if (!document.getElementById('portal-shell-styles')) {
+    const style = document.createElement('style')
+    style.id = 'portal-shell-styles'
+    style.textContent = `
+      :root {
+        --portal-bg: linear-gradient(180deg, #eaf4ff 0%, #f7f9fc 40%, #ffffff 100%);
+        --portal-sidebar: #111827;
+        --portal-sidebar-soft: #1f2937;
+        --portal-main: #f5f8fc;
+        --portal-border: #dce5f2;
+        --portal-text: #0f172a;
+        --portal-muted: #52627a;
+        --portal-accent: #0e7490;
+        --portal-card: #ffffff;
       }
-      
-      .sidebar.active {
-        transform: translateX(0);
+
+      body {
+        margin: 0;
+        font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
+        color: var(--portal-text);
+        background: var(--portal-bg);
       }
-      
-      .sidebar-close {
-        display: block;
+
+      .portal-shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 280px 1fr;
       }
-      
-      .hamburger-menu {
-        display: block;
+
+      .portal-sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        background: radial-gradient(circle at top, #1f2937, #111827 65%);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        padding: 1.2rem;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        z-index: 20;
       }
-      
-      .main-wrapper {
-        margin-left: 0;
+
+      .portal-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        margin-bottom: 1.2rem;
       }
-      
-      .grid-cols-4 {
-        grid-template-columns: repeat(2, 1fr);
+
+      .portal-brand-mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #0ea5e9, #06b6d4);
+        font-weight: 700;
       }
-      
-      .quick-actions-grid {
-        grid-template-columns: repeat(2, 1fr);
+
+      .portal-brand h1 {
+        margin: 0;
+        font-size: 1.1rem;
       }
-    }
-    
-    @media (max-width: 576px) {
-      .grid-cols-4,
-      .quick-actions-grid {
-        grid-template-columns: 1fr;
+
+      .portal-brand p {
+        margin: 0;
+        color: #b8c4d8;
+        font-size: 0.82rem;
       }
-      
-      .dashboard-content {
+
+      .portal-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        overflow-y: auto;
+      }
+
+      .portal-nav-item {
+        border: 1px solid transparent;
+        background: transparent;
+        color: #e2e8f0;
+        border-radius: 14px;
+        padding: 0.8rem;
+        text-align: left;
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        grid-template-areas:
+          'icon label'
+          '. description';
+        gap: 0.2rem 0.6rem;
+      }
+
+      .portal-nav-item i {
+        grid-area: icon;
+        font-size: 1rem;
+        margin-top: 0.1rem;
+      }
+
+      .portal-nav-item span {
+        grid-area: label;
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+
+      .portal-nav-item small {
+        grid-area: description;
+        color: #aab7ca;
+        font-size: 0.76rem;
+      }
+
+      .portal-nav-item:hover,
+      .portal-nav-item.active {
+        background: rgba(14, 116, 144, 0.22);
+        border-color: rgba(56, 189, 248, 0.35);
+      }
+
+      .portal-sidebar-footer {
+        margin-top: auto;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+
+      .portal-main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .portal-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.2rem;
+        border-bottom: 1px solid var(--portal-border);
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(8px);
+      }
+
+      .portal-topbar h2 {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+
+      .portal-topbar p {
+        margin: 0;
+        color: var(--portal-muted);
+        font-size: 0.82rem;
+      }
+
+      .portal-user-pill {
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        border-radius: 999px;
+        padding: 0.35rem 0.85rem;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+
+      .portal-user-pill span {
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      .portal-user-pill small {
+        font-size: 0.73rem;
+        color: #0369a1;
+      }
+
+      .portal-menu-btn {
+        display: none;
+        border: 1px solid var(--portal-border);
+        border-radius: 8px;
+        background: #fff;
+        width: 34px;
+        height: 34px;
+      }
+
+      .portal-content {
+        padding: 1rem 1.2rem 1.8rem;
+      }
+
+      .portal-loading {
+        min-height: 220px;
+        display: grid;
+        place-items: center;
+        gap: 0.8rem;
+        color: var(--portal-muted);
+      }
+
+      .portal-hero {
+        border-radius: 18px;
+        padding: 1.2rem;
+        color: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+      }
+
+      .portal-hero-admin {
+        background: linear-gradient(120deg, #0f766e, #0369a1);
+      }
+
+      .portal-hero-teacher {
+        background: linear-gradient(120deg, #8b5cf6, #4338ca);
+      }
+
+      .portal-hero-student {
+        background: linear-gradient(120deg, #f97316, #ea580c);
+      }
+
+      .portal-hero h2 {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+
+      .portal-hero p {
+        margin: 0.25rem 0 0;
+        color: rgba(248, 250, 252, 0.92);
+      }
+
+      .portal-hero-chip {
+        background: rgba(255, 255, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 999px;
+        padding: 0.35rem 0.8rem;
+        display: inline-flex;
+        gap: 0.4rem;
+        align-items: center;
+        white-space: nowrap;
+      }
+
+      .portal-grid {
+        display: grid;
+        gap: 0.9rem;
+        margin-bottom: 1rem;
+      }
+
+      .portal-grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .portal-grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .portal-card {
+        background: var(--portal-card);
+        border: 1px solid var(--portal-border);
+        border-radius: 16px;
         padding: 1rem;
       }
-    }
-    
-    /* Bootstrap utilities */
-    .container-fluid {
-      width: 100%;
-      padding-right: 15px;
-      padding-left: 15px;
-      margin-right: auto;
-      margin-left: auto;
-    }
-    
-    .d-flex {
-      display: flex !important;
-    }
-    
-    .align-items-center {
-      align-items: center !important;
-    }
-    
-    .gap-2 {
-      gap: 0.5rem !important;
-    }
-    
-    .h-100 {
-      height: 100% !important;
-    }
-    
-    .d-none {
-      display: none !important;
-    }
-    
-    .d-lg-block {
-      display: block !important;
-    }
-    
-    .d-md-inline {
-      display: inline !important;
-    }
-    
-    .me-2 {
-      margin-right: 0.5rem !important;
-    }
-    
-    .me-auto {
-      margin-right: auto !important;
-    }
-    
-    .ms-3 {
-      margin-left: 1rem !important;
-    }
-    
-    .mb-0 {
-      margin-bottom: 0 !important;
-    }
-    
-    .mb-3 {
-      margin-bottom: 1rem !important;
-    }
-    
-    .flex-grow-1 {
-      flex-grow: 1 !important;
-    }
-    
-    .flex-column {
-      flex-direction: column !important;
-    }
-    
-    .h3 {
-      font-size: 1.75rem;
-    }
-    
-    .font-bold {
-      font-weight: 700;
-    }
-    
-    .text-muted {
-      color: var(--text-muted) !important;
-    }
-    
-    .text-sm {
-      font-size: 0.875rem;
-    }
-    
-    .fw-bold {
-      font-weight: 700 !important;
-    }
-    
-    .btn {
-      display: inline-block;
-      padding: 0.375rem 0.75rem;
-      font-size: 0.875rem;
-      font-weight: 400;
-      line-height: 1.5;
-      text-align: center;
-      text-decoration: none;
-      vertical-align: middle;
-      cursor: pointer;
-      border: 1px solid transparent;
-      border-radius: var(--border-radius);
-      transition: all 0.15s ease-in-out;
-    }
-    
-    .btn-light {
-      background-color: #f8f9fa;
-      border-color: var(--border-color);
-      color: #212529;
-    }
-    
-    .btn-light:hover {
-      background-color: #e2e6ea;
-    }
-    
-    .btn-sm {
-      padding: 0.25rem 0.5rem;
-      font-size: 0.875rem;
-    }
-    
-    .dropdown {
-      position: relative;
-    }
-    
-    .dropdown-toggle::after {
-      display: inline-block;
-      margin-left: 0.255em;
-      vertical-align: 0.255em;
-      content: "";
-      border-top: 0.3em solid;
-      border-right: 0.3em solid transparent;
-      border-bottom: 0;
-      border-left: 0.3em solid transparent;
-    }
-    
-    .dropdown-menu {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      z-index: 1000;
-      display: none;
-      min-width: 10rem;
-      padding: 0.5rem 0;
-      margin: 0.125rem 0 0;
-      font-size: 0.875rem;
-      color: #212529;
-      background-color: #fff;
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-      box-shadow: var(--shadow-lg);
-    }
-    
-    .dropdown-menu-end {
-      right: 0;
-      left: auto;
-    }
-    
-    .dropdown-item {
-      display: block;
-      width: 100%;
-      padding: 0.5rem 1rem;
-      clear: both;
-      font-weight: 400;
-      color: #212529;
-      text-align: inherit;
-      text-decoration: none;
-      white-space: nowrap;
-      background-color: transparent;
-      border: 0;
-      cursor: pointer;
-    }
-    
-    .dropdown-item:hover {
-      background-color: #f8f9fa;
-    }
-    
-    .dropdown-divider {
-      height: 0;
-      margin: 0.5rem 0;
-      overflow: hidden;
-      border-top: 1px solid var(--border-color);
-    }
-    
-    /* Simple dropdown toggle with JavaScript */
-    .dropdown:hover .dropdown-menu,
-    .dropdown-menu:hover {
-      display: block;
-    }
-    
-    @media (min-width: 576px) {
-      .d-md-inline {
-        display: inline !important;
+
+      .portal-card h4 {
+        margin-top: 0;
       }
-    }
-    
-    @media (min-width: 992px) {
-      .d-lg-none {
-        display: none !important;
+
+      .metric {
+        background: linear-gradient(180deg, #ffffff 0%, #f0f9ff 100%);
       }
-      
-      .d-lg-block {
-        display: block !important;
+
+      .metric small {
+        color: var(--portal-muted);
       }
-    }
-    
-    /* Additional Styles for Tables and Forms */
-    .table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    
-    .table th,
-    .table td {
-      padding: 0.75rem;
-      border-bottom: 1px solid var(--border-color);
-      text-align: left;
-    }
-    
-    .table thead th {
-      font-weight: 600;
-      color: #1e293b;
-      background: #f8fafc;
-      border-bottom: 2px solid var(--border-color);
-    }
-    
-    .table-hover tbody tr:hover {
-      background-color: #f8fafc;
-    }
-    
-    .table-responsive {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    
-    .text-end {
-      text-align: right !important;
-    }
-    
-    .text-center {
-      text-align: center !important;
-    }
-    
-    .text-truncate {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    
-    .text-capitalize {
-      text-transform: capitalize;
-    }
-    
-    .form-control {
-      display: block;
-      width: 100%;
-      padding: 0.5rem 0.75rem;
-      font-size: 0.875rem;
-      line-height: 1.5;
-      color: #212529;
-      background-color: #fff;
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-      transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-    }
-    
-    .form-control:focus {
-      border-color: #6366f1;
-      outline: 0;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-    
-    .form-label {
-      display: inline-block;
-      margin-bottom: 0.5rem;
-      font-weight: 500;
-      color: #1e293b;
-      font-size: 0.875rem;
-    }
-    
-    .row {
-      display: flex;
-      flex-wrap: wrap;
-      margin-right: -12px;
-      margin-left: -12px;
-    }
-    
-    .col-12 {
-      flex: 0 0 100%;
-      max-width: 100%;
-      padding-right: 12px;
-      padding-left: 12px;
-    }
-    
-    .col-md-2 {
-      flex: 0 0 16.666667%;
-      max-width: 16.666667%;
-      padding-right: 12px;
-      padding-left: 12px;
-    }
-    
-    .col-md-3 {
-      flex: 0 0 25%;
-      max-width: 25%;
-      padding-right: 12px;
-      padding-left: 12px;
-    }
-    
-    .col-md-4 {
-      flex: 0 0 33.333333%;
-      max-width: 33.333333%;
-      padding-right: 12px;
-      padding-left: 12px;
-    }
-    
-    .col-md-6 {
-      flex: 0 0 50%;
-      max-width: 50%;
-      padding-right: 12px;
-      padding-left: 12px;
-    }
-    
-    .g-3 {
-      --bs-gutter-y: 1rem;
-      --bs-gutter-x: 1rem;
-      margin-top: calc(-1 * var(--bs-gutter-y));
-      margin-right: calc(-.5 * var(--bs-gutter-x));
-      margin-left: calc(-.5 * var(--bs-gutter-x));
-    }
-    
-    .g-3 > * {
-      padding-right: calc(var(--bs-gutter-x) * .5);
-      padding-left: calc(var(--bs-gutter-x) * .5);
-      margin-top: var(--bs-gutter-y);
-    }
-    
-    .justify-content-between {
-      justify-content: space-between !important;
-    }
-    
-    .mb-1 {
-      margin-bottom: 0.25rem !important;
-    }
-    
-    .mb-4 {
-      margin-bottom: 1.5rem !important;
-    }
-    
-    .btn-primary {
-      background-color: #6366f1;
-      border-color: #6366f1;
-      color: white;
-    }
-    
-    .btn-primary:hover {
-      background-color: #4f46e5;
-      border-color: #4f46e5;
-    }
-    
-    .btn-secondary {
-      background-color: #6b7280;
-      border-color: #6b7280;
-      color: white;
-    }
-    
-    .btn-secondary:hover {
-      background-color: #4b5563;
-    }
-    
-    .btn-group {
-      display: inline-flex;
-    }
-    
-    .btn-group-sm .btn {
-      padding: 0.25rem 0.5rem;
-      font-size: 0.75rem;
-    }
-    
-    .badge {
-      display: inline-block;
-      padding: 0.35em 0.65em;
-      font-size: 0.75rem;
-      font-weight: 500;
-      line-height: 1;
-      color: #fff;
-      text-align: center;
-      white-space: nowrap;
-      vertical-align: baseline;
-      border-radius: 0.25rem;
-    }
-    
-    .bg-success {
-      background-color: #10b981 !important;
-    }
-    
-    .bg-secondary {
-      background-color: #6b7280 !important;
-    }
-    
-    .bg-info {
-      background-color: #06b6d4 !important;
-    }
-    
-    .bg-warning {
-      background-color: #f59e0b !important;
-    }
-    
-    .bg-danger {
-      background-color: #ef4444 !important;
-    }
-    
-    .w-100 {
-      width: 100% !important;
-    }
-    
-    .py-4 {
-      padding-top: 1.5rem !important;
-      padding-bottom: 1.5rem !important;
-    }
-    
-    .py-5 {
-      padding-top: 3rem !important;
-      padding-bottom: 3rem !important;
-    }
-    
-    .p-0 {
-      padding: 0 !important;
-    }
-    
-    .mt-3 {
-      margin-top: 1rem !important;
-    }
-    
-    .small {
-      font-size: 0.875rem;
-    }
-    
-    /* Modal Styles */
-    .modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      z-index: 1055;
-      width: 100%;
-      height: 100%;
-      overflow-x: hidden;
-      overflow-y: auto;
-      outline: 0;
-    }
-    
-    .modal-backdrop {
-      position: fixed;
-      top: 0;
-      left: 0;
-      z-index: 1050;
-      width: 100vw;
-      height: 100vh;
-      background-color: rgba(0, 0, 0, 0.5);
-    }
-    
-    .modal-backdrop.show {
-      opacity: 1;
-    }
-    
-    .modal-dialog {
-      position: relative;
-      width: auto;
-      margin: 1.75rem auto;
-      pointer-events: none;
-      max-width: 500px;
-    }
-    
-    .modal-lg {
-      max-width: 800px;
-    }
-    
-    .modal-content {
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      pointer-events: auto;
-      background-color: #fff;
-      border-radius: var(--border-radius);
-      box-shadow: var(--shadow-lg);
-    }
-    
-    .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid var(--border-color);
-    }
-    
-    .modal-title {
-      margin: 0;
-      font-size: 1.125rem;
-      font-weight: 600;
-      color: #1e293b;
-    }
-    
-    .modal-body {
-      position: relative;
-      flex: 1 1 auto;
-      padding: 1.5rem;
-    }
-    
-    .modal-footer {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 0.5rem;
-      padding: 1.25rem 1.5rem;
-      border-top: 1px solid var(--border-color);
-    }
-    
-    .btn-close {
-      background: none;
-      border: none;
-      font-size: 1.25rem;
-      cursor: pointer;
-      padding: 0;
-      color: #6b7280;
-      opacity: 0.5;
-    }
-    
-    .btn-close:hover {
-      opacity: 1;
-    }
-    
-    .btn-close::before {
-      content: "×";
-      font-size: 2rem;
-      line-height: 1;
-    }
-    
-    @media (max-width: 768px) {
-      .col-md-2,
-      .col-md-3,
-      .col-md-4,
-      .col-md-6 {
-        flex: 0 0 100%;
-        max-width: 100%;
+
+      .metric h3 {
+        margin: 0.35rem 0 0;
+        font-size: 1.8rem;
       }
-      
-      .modal-dialog {
-        margin: 0.5rem;
+
+      .metric .metric-text {
+        font-size: 1.15rem;
       }
-    }
-  `
-  document.head.appendChild(style)
+
+      .metric-wide p {
+        margin-bottom: 0;
+        color: var(--portal-muted);
+      }
+
+      .portal-big-number {
+        font-size: 2rem;
+        font-weight: 800;
+        margin-bottom: 0;
+      }
+
+      .portal-shortcuts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+      }
+
+      .portal-shortcut {
+        border: 1px solid #bae6fd;
+        background: #f0f9ff;
+        border-radius: 12px;
+        padding: 0.6rem 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        color: #075985;
+        font-weight: 600;
+      }
+
+      .portal-card-header-inline {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.8rem;
+      }
+
+      .portal-badge {
+        border-radius: 999px;
+        background: #cffafe;
+        color: #155e75;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+
+      .portal-course-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+      }
+
+      .portal-course-item {
+        border: 1px solid var(--portal-border);
+        border-radius: 12px;
+        padding: 0.75rem;
+        background: #fff;
+      }
+
+      .portal-course-item h5 {
+        margin: 0;
+      }
+
+      .portal-course-item p {
+        margin: 0.2rem 0 0;
+        color: var(--portal-muted);
+      }
+
+      .portal-course-meta {
+        margin-top: 0.55rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem 0.8rem;
+        color: #0f172a;
+        font-size: 0.82rem;
+      }
+
+      .portal-course-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 2rem 1rem;
+      }
+
+      .empty-state i {
+        font-size: 2rem;
+        color: #94a3b8;
+      }
+
+      .portal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.5);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+        z-index: 15;
+      }
+
+      .portal-overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      @media (max-width: 1100px) {
+        .portal-grid-3 {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 991px) {
+        .portal-shell {
+          grid-template-columns: 1fr;
+        }
+
+        .portal-sidebar {
+          position: fixed;
+          left: 0;
+          top: 0;
+          transform: translateX(-100%);
+          transition: transform 0.22s ease;
+          width: 280px;
+        }
+
+        .portal-sidebar.open {
+          transform: translateX(0);
+        }
+
+        .portal-menu-btn {
+          display: inline-grid;
+          place-items: center;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .portal-grid-3,
+        .portal-grid-2 {
+          grid-template-columns: 1fr;
+        }
+
+        .portal-topbar {
+          align-items: flex-start;
+          gap: 0.7rem;
+        }
+
+        .portal-user-pill {
+          display: none;
+        }
+      }
+    `
+
+    document.head.appendChild(style)
+  }
+
+  if (!document.getElementById('portal-bootstrap-icons')) {
+    const icons = document.createElement('link')
+    icons.id = 'portal-bootstrap-icons'
+    icons.rel = 'stylesheet'
+    icons.href = 'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css'
+    document.head.appendChild(icons)
+  }
 }

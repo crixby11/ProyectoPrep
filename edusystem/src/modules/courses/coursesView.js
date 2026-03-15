@@ -78,13 +78,18 @@ export async function renderCoursesView(container) {
       *,
       course_sections (
         id,
+        nombre,
         teacher_id,
         cupo_maximo,
         periodo,
+        modalidad,
+        ubicacion,
         activo,
         profiles (
           id,
           primer_nombre,
+          segundo_nombre,
+          apellido_materno,
           apellido_paterno
         ),
         schedules (
@@ -105,8 +110,8 @@ export async function renderCoursesView(container) {
       <!-- Header -->
       <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h1 class="h3 font-bold mb-1">Gestión de Cursos</h1>
-          <p class="text-muted text-sm mb-0">Administra todos los cursos de la institución</p>
+          <h1 class="h3 mb-1">Gestión de Cursos</h1>
+          <p class="text-muted mb-0">Administra todos los cursos de la institución</p>
         </div>
         <button class="btn btn-primary" id="addCourseBtn">
           <i class="bi bi-plus-circle me-2"></i>
@@ -115,8 +120,8 @@ export async function renderCoursesView(container) {
       </div>
       
       <!-- Filters -->
-      <div class="dashboard-card mb-4">
-        <div class="dashboard-card-body">
+      <div class="portal-card mb-4">
+        <div>
           <div class="row g-3">
             <div class="col-md-4">
               <input type="text" class="form-control" id="searchInput" placeholder="Buscar curso...">
@@ -137,7 +142,7 @@ export async function renderCoursesView(container) {
               </select>
             </div>
             <div class="col-md-2">
-              <button class="btn btn-light w-100" id="clearFiltersBtn">
+              <button class="btn btn-outline-secondary w-100" id="clearFiltersBtn">
                 <i class="bi bi-x-circle me-1"></i>
                 Limpiar
               </button>
@@ -147,35 +152,34 @@ export async function renderCoursesView(container) {
       </div>
       
       <!-- Stats -->
-      <div class="dashboard-row mb-4">
-        <div class="dashboard-grid grid-cols-4">
-          <div class="stats-card">
-            <div class="stats-card-label">Total de Cursos</div>
-            <div class="stats-card-value">${courses?.length || 0}</div>
+      <div class="portal-grid portal-grid-3 mb-4">
+          <div class="portal-card metric">
+            <small>Total de Cursos</small>
+            <h3>${courses?.length || 0}</h3>
           </div>
-          <div class="stats-card">
-            <div class="stats-card-label">Cursos Activos</div>
-            <div class="stats-card-value">${courses?.filter(c => c.activo).length || 0}</div>
+          <div class="portal-card metric">
+            <small>Cursos Activos</small>
+            <h3>${courses?.filter(c => c.activo).length || 0}</h3>
           </div>
-          <div class="stats-card">
-            <div class="stats-card-label">Cursos Inactivos</div>
-            <div class="stats-card-value">${courses?.filter(c => !c.activo).length || 0}</div>
+          <div class="portal-card metric">
+            <small>Cursos Inactivos</small>
+            <h3>${courses?.filter(c => !c.activo).length || 0}</h3>
           </div>
-          <div class="stats-card">
-            <div class="stats-card-label">Total de Créditos</div>
-            <div class="stats-card-value">${courses?.reduce((sum, c) => sum + (c.creditos || 0), 0) || 0}</div>
+          <div class="portal-card metric">
+            <small>Total de Créditos</small>
+            <h3>${courses?.reduce((sum, c) => sum + (c.creditos || 0), 0) || 0}</h3>
           </div>
-        </div>
       </div>
       
       <!-- Courses Table -->
-      <div class="dashboard-card">
-        <div class="dashboard-card-header">
-          <h5 class="dashboard-card-title">Listado de Cursos</h5>
+      <div class="portal-card">
+        <div class="portal-card-header-inline">
+          <h4 class="mb-0">Listado de Cursos</h4>
+          <span class="portal-badge">${courses?.length || 0} registros</span>
         </div>
-        <div class="dashboard-card-body p-0">
+        <div class="p-0">
           <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-striped align-middle mb-0">
               <thead>
                 <tr>
                   <th>Código</th>
@@ -210,17 +214,18 @@ export async function renderCoursesView(container) {
  */
 function renderCourseRow(course) {
   const section = course.course_sections?.[0]
-  const teacher = section?.profiles
+  const teacher = Array.isArray(section?.profiles) ? section.profiles[0] : section?.profiles
   const schedules = section?.schedules || []
   
   const teacherName = teacher 
-    ? `${teacher.primer_nombre} ${teacher.apellido_paterno}`
+    ? [teacher.primer_nombre, teacher.segundo_nombre, teacher.apellido_paterno, teacher.apellido_materno].filter(Boolean).join(' ')
     : 'Sin maestro'
   
   const scheduleText = schedules.length > 0
     ? schedules.map(s => {
         const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-        return `${dias[s.dia_semana]} ${s.hora_inicio.substring(0,5)}`
+        const start = s.hora_inicio ? s.hora_inicio.substring(0, 5) : '--:--'
+        return `${dias[s.dia_semana] || 'Día'} ${start}`
       }).join(', ')
     : 'Sin horario'
   
@@ -256,7 +261,7 @@ function renderCourseRow(course) {
       <td>${statusBadge}</td>
       <td class="text-end">
         <div class="btn-group btn-group-sm">
-          <button class="btn btn-light view-course" data-id="${course.id}">
+          <button class="btn btn-light view-course" data-id="${course.id}" title="Ver acciones del curso">
             <i class="bi bi-eye"></i>
           </button>
           <button class="btn btn-light edit-course" data-id="${course.id}">
@@ -408,7 +413,7 @@ async function openCourseModal(course = null) {
   }
   
   const modalHTML = `
-    <style>
+    <style id="courses-modal-style">
       #courseModal .form-control,
       #courseModal .form-select {
         padding: 0.625rem 0.875rem;
@@ -662,6 +667,7 @@ function addScheduleRow() {
 function closeModal() {
   document.querySelector('.modal')?.remove()
   document.querySelector('.modal-backdrop')?.remove()
+  document.getElementById('courses-modal-style')?.remove()
 }
 
 /**
@@ -845,31 +851,234 @@ async function saveCourse(courseId = null) {
  * Ver detalles del curso
  */
 async function viewCourseDetails(courseId) {
-  const { data: course, error } = await supabase
-    .from('courses')
-    .select(`
-      *,
-      course_sections (
-        id,
-        nombre
-      )
-    `)
-    .eq('id', courseId)
-    .single()
-  
+  const { data: course, error } = await fetchCourseById(courseId)
+
   if (error || !course) {
     console.error('Error cargando detalles:', error)
     alert('Error cargando los detalles del curso')
     return
   }
-  
-  // Si el curso tiene secciones, navegar a la vista detallada de la primera sección
-  if (course.course_sections && course.course_sections.length > 0) {
-    const firstSection = course.course_sections[0]
-    // Navegar a la vista detallada del curso
-    window.location.hash = `#/course/${firstSection.id}`
-  } else {
-    alert('Este curso no tiene secciones activas')
+
+  openCourseActionsModal(course)
+}
+
+/**
+ * Carga un curso con todas sus relaciones para acciones
+ */
+async function fetchCourseById(courseId) {
+  return await supabase
+    .from('courses')
+    .select(`
+      *,
+      course_sections (
+        id,
+        nombre,
+        teacher_id,
+        cupo_maximo,
+        periodo,
+        modalidad,
+        ubicacion,
+        activo,
+        profiles (
+          id,
+          primer_nombre,
+          segundo_nombre,
+          apellido_paterno,
+          apellido_materno,
+          email
+        ),
+        schedules (
+          dia_semana,
+          hora_inicio,
+          hora_fin
+        )
+      )
+    `)
+    .eq('id', courseId)
+    .single()
+}
+
+/**
+ * Muestra un modal con acciones rápidas del curso
+ */
+function openCourseActionsModal(course) {
+  closeCourseActionsModal()
+
+  const section = course.course_sections?.[0]
+  const teacher = Array.isArray(section?.profiles) ? section.profiles[0] : section?.profiles
+  const schedules = section?.schedules || []
+
+  const teacherName = teacher
+    ? [teacher.primer_nombre, teacher.segundo_nombre, teacher.apellido_paterno, teacher.apellido_materno]
+      .filter(Boolean)
+      .join(' ')
+    : 'Sin maestro asignado'
+
+  const scheduleText = schedules.length > 0
+    ? schedules.map(formatScheduleLine).join(' · ')
+    : 'Sin horarios definidos'
+
+  const modalHTML = `
+    <style id="courses-actions-style">
+      #courseActionsModal .metric-box {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.75rem;
+      }
+
+      #courseActionsModal .metric-box small {
+        color: #64748b;
+      }
+
+      #courseActionsModal .metric-box p {
+        margin: 0.25rem 0 0;
+        font-weight: 600;
+        color: #0f172a;
+      }
+    </style>
+
+    <div class="modal-backdrop show course-actions-backdrop"></div>
+    <div class="modal show d-block" id="courseActionsModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Acciones del Curso</h5>
+            <button type="button" class="btn-close" id="closeCourseActionsBtn"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="mb-3">
+              <h4 class="mb-1">${course.nombre}</h4>
+              <p class="text-muted mb-0">${course.codigo || 'Sin código'} · ${course.creditos || 0} créditos · ${course.nivel || 'Sin nivel'}</p>
+            </div>
+
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <div class="metric-box">
+                  <small>Docente</small>
+                  <p>${teacherName}</p>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="metric-box">
+                  <small>Estado</small>
+                  <p>${course.activo ? 'Activo' : 'Inactivo'}</p>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="metric-box">
+                  <small>Visibilidad</small>
+                  <p>${course.visible ? 'Visible' : 'Oculto'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="alert alert-light border">
+              <strong>Horario:</strong> ${scheduleText}
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-primary" id="openFullCourseViewBtn" ${section?.id ? '' : 'disabled'}>
+                <i class="bi bi-layout-text-window-reverse me-1"></i>Ver Vista Completa
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="editCourseFromActionsBtn">
+                <i class="bi bi-pencil-square me-1"></i>Editar Curso
+              </button>
+              <button type="button" class="btn btn-outline-warning" id="toggleCourseStatusBtn">
+                <i class="bi bi-power me-1"></i>${course.activo ? 'Desactivar' : 'Activar'}
+              </button>
+              <button type="button" class="btn btn-outline-info" id="toggleCourseVisibilityBtn">
+                <i class="bi bi-eye${course.visible ? '-slash' : ''} me-1"></i>${course.visible ? 'Ocultar' : 'Mostrar'}
+              </button>
+              <button type="button" class="btn btn-outline-danger" id="deleteCourseFromActionsBtn">
+                <i class="bi bi-trash me-1"></i>Eliminar Curso
+              </button>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="closeCourseActionsFooterBtn">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+
+  document.body.insertAdjacentHTML('beforeend', modalHTML)
+
+  document.getElementById('closeCourseActionsBtn')?.addEventListener('click', closeCourseActionsModal)
+  document.getElementById('closeCourseActionsFooterBtn')?.addEventListener('click', closeCourseActionsModal)
+
+  document.getElementById('openFullCourseViewBtn')?.addEventListener('click', async () => {
+    if (!section?.id) return
+    closeCourseActionsModal()
+    await openFullCourseView(section.id)
+  })
+
+  document.getElementById('editCourseFromActionsBtn')?.addEventListener('click', async () => {
+    const { data: freshCourse } = await fetchCourseById(course.id)
+    closeCourseActionsModal()
+    if (freshCourse) {
+      openCourseModal(freshCourse)
+    }
+  })
+
+  document.getElementById('toggleCourseStatusBtn')?.addEventListener('click', async () => {
+    await toggleCourseField(course.id, { activo: !course.activo }, !course.activo ? 'Curso activado' : 'Curso desactivado', course.nombre)
+  })
+
+  document.getElementById('toggleCourseVisibilityBtn')?.addEventListener('click', async () => {
+    await toggleCourseField(course.id, { visible: !course.visible }, !course.visible ? 'Curso visible' : 'Curso ocultado', course.nombre)
+  })
+
+  document.getElementById('deleteCourseFromActionsBtn')?.addEventListener('click', async () => {
+    closeCourseActionsModal()
+    await deleteCourse(course.id)
+  })
+}
+
+function closeCourseActionsModal() {
+  document.getElementById('courseActionsModal')?.remove()
+  document.querySelector('.course-actions-backdrop')?.remove()
+  document.getElementById('courses-actions-style')?.remove()
+}
+
+async function openFullCourseView(sectionId) {
+  const mainContent = document.getElementById('main-content')
+  if (!mainContent) return
+
+  const { renderCourseDetailView } = await import('./courseDetailView.js')
+  await renderCourseDetailView(mainContent, sectionId)
+}
+
+function formatScheduleLine(item) {
+  const dias = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
+  const day = dias[item.dia_semana] || 'Dia'
+  const start = item.hora_inicio ? item.hora_inicio.slice(0, 5) : '--:--'
+  const end = item.hora_fin ? item.hora_fin.slice(0, 5) : '--:--'
+  return `${day} ${start}-${end}`
+}
+
+async function toggleCourseField(courseId, patch, successTitle, courseName) {
+  try {
+    const { error } = await supabase
+      .from('courses')
+      .update(patch)
+      .eq('id', courseId)
+
+    if (error) throw error
+
+    showSuccessNotification(successTitle, courseName)
+    closeCourseActionsModal()
+
+    const mainContent = document.getElementById('main-content')
+    if (mainContent) {
+      renderCoursesView(mainContent)
+    }
+  } catch (error) {
+    console.error('Error actualizando curso:', error)
+    alert('No se pudo actualizar el curso: ' + error.message)
   }
 }
 

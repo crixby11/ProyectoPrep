@@ -3,23 +3,54 @@
 -- Se ejecuta cuando un nuevo usuario se registra via Supabase Auth
 -- ============================================
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  primer_nombre TEXT;
+  segundo_nombre TEXT;
+  apellido_paterno TEXT;
+  apellido_materno TEXT;
+  nombre_completo TEXT;
+  user_rol TEXT;
 BEGIN
-  INSERT INTO public.profiles (id, email, rol, nombre, activo)
+  -- Extraer datos de metadata
+  primer_nombre := COALESCE(NEW.raw_user_meta_data->>'primer_nombre', '');
+  segundo_nombre := COALESCE(NEW.raw_user_meta_data->>'segundo_nombre', '');
+  apellido_paterno := COALESCE(NEW.raw_user_meta_data->>'apellido_paterno', '');
+  apellido_materno := COALESCE(NEW.raw_user_meta_data->>'apellido_materno', '');
+  user_rol := COALESCE(NEW.raw_user_meta_data->>'role', 'student');
+  
+  -- Construir nombre completo
+  nombre_completo := TRIM(CONCAT_WS(' ', primer_nombre, segundo_nombre, apellido_paterno, apellido_materno));
+  IF nombre_completo = '' OR nombre_completo IS NULL THEN
+    nombre_completo := split_part(NEW.email, '@', 1);
+  END IF;
+  
+  -- Insertar en profiles
+  INSERT INTO public.profiles (
+    id, email, rol, nombre, primer_nombre, segundo_nombre, 
+    apellido_paterno, apellido_materno, activo
+  )
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'role', 'student'),
-    COALESCE(NEW.raw_user_meta_data->>'nombre', split_part(NEW.email, '@', 1)),
+    user_rol,
+    nombre_completo,
+    primer_nombre,
+    segundo_nombre,
+    apellido_paterno,
+    apellido_materno,
     true
   );
+  
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Crear trigger que se ejecuta después de insert en auth.users
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

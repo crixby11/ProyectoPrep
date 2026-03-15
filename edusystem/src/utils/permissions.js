@@ -4,29 +4,66 @@ import { supabase } from '../lib/supabaseClient.js'
 let userPermissions = null
 let currentUserRole = null
 
+const ROLE_FALLBACK_MODULES = {
+  admin: ['dashboard', 'general', 'users', 'courses'],
+  teacher: ['dashboard', 'teacher-courses', 'teacher-students', 'attendance'],
+  student: ['dashboard', 'inscriptions', 'my-courses', 'my-progress'],
+  parent: ['dashboard', 'my-courses', 'my-progress']
+}
+
+/**
+ * Resuelve el rol real desde profiles y usa metadata como fallback
+ */
+export async function resolveUserRole(user) {
+  try {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('rol')
+      .eq('id', user.id)
+      .single()
+
+    if (error) throw error
+    return profile?.rol || user.user_metadata?.role || 'student'
+  } catch (error) {
+    console.warn('No se pudo resolver rol desde profiles, usando metadata:', error.message)
+    return user.user_metadata?.role || 'student'
+  }
+}
+
 /**
  * Cargar permisos del usuario actual
  */
-export async function loadUserPermissions(userId) {
+export async function loadUserPermissions(userId, knownRole = null) {
   try {
-    // Get user profile to get role
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('rol')
-      .eq('id', userId)
-      .single()
-    
-    if (profileError) throw profileError
-    
-    currentUserRole = profile.rol
+    userPermissions = {}
+
+    if (knownRole) {
+      currentUserRole = knownRole
+    } else {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('rol')
+        .eq('id', userId)
+        .single()
+
+      if (profileError) throw profileError
+      currentUserRole = profile?.rol || 'student'
+    }
     
     // Get role permissions
     const { data: permissions, error: permError } = await supabase
       .from('role_permissions')
       .select('*')
-      .eq('rol', profile.rol)
-    
-    if (permError) throw permError
+      .eq('rol', currentUserRole)
+
+    if (permError) {
+      if (permError.code === 'PGRST205') {
+        console.warn('Tabla role_permissions no existe; usando permisos fallback por rol.')
+        return userPermissions
+      }
+
+      throw permError
+    }
     
     // Convert to map for faster lookup
     userPermissions = {}
@@ -42,7 +79,8 @@ export async function loadUserPermissions(userId) {
     return userPermissions
   } catch (error) {
     console.error('Error cargando permisos:', error)
-    return {}
+    userPermissions = {}
+    return userPermissions
   }
 }
 
@@ -50,11 +88,10 @@ export async function loadUserPermissions(userId) {
  * Verificar si el usuario puede ver un módulo
  */
 export function canViewModule(moduleName) {
-  // Admin siempre tiene acceso
-  if (currentUserRole === 'admin') return true
-  
+  if (!currentUserRole) return false
+
   if (!userPermissions || !userPermissions[moduleName]) {
-    return false
+    return (ROLE_FALLBACK_MODULES[currentUserRole] || []).includes(moduleName)
   }
   
   return userPermissions[moduleName].can_view
@@ -64,10 +101,8 @@ export function canViewModule(moduleName) {
  * Verificar si el usuario puede crear en un módulo
  */
 export function canCreateInModule(moduleName) {
-  if (currentUserRole === 'admin') return true
-  
   if (!userPermissions || !userPermissions[moduleName]) {
-    return false
+    return (ROLE_FALLBACK_MODULES[currentUserRole] || []).includes(moduleName)
   }
   
   return userPermissions[moduleName].can_create
@@ -77,10 +112,8 @@ export function canCreateInModule(moduleName) {
  * Verificar si el usuario puede editar en un módulo
  */
 export function canEditInModule(moduleName) {
-  if (currentUserRole === 'admin') return true
-  
   if (!userPermissions || !userPermissions[moduleName]) {
-    return false
+    return (ROLE_FALLBACK_MODULES[currentUserRole] || []).includes(moduleName)
   }
   
   return userPermissions[moduleName].can_edit
@@ -90,8 +123,6 @@ export function canEditInModule(moduleName) {
  * Verificar si el usuario puede eliminar en un módulo
  */
 export function canDeleteInModule(moduleName) {
-  if (currentUserRole === 'admin') return true
-  
   if (!userPermissions || !userPermissions[moduleName]) {
     return false
   }
@@ -103,20 +134,17 @@ export function canDeleteInModule(moduleName) {
  * Obtener todos los módulos visibles para el rol actual
  */
 export function getVisibleModules() {
-  if (currentUserRole === 'admin') {
-    // Admin ve todos los módulos
-    return [
-      'dashboard', 'courses', 'students', 'teachers', 
-      'enrollments', 'grades', 'attendance', 'tasks',
-      'resources', 'messages', 'users', 'settings'
-    ]
-  }
+  if (!currentUserRole) return []
+
+  const fallback = ROLE_FALLBACK_MODULES[currentUserRole] || []
+  if (!userPermissions) return fallback
   
-  if (!userPermissions) return []
-  
-  return Object.keys(userPermissions).filter(module => 
+  const explicit = Object.keys(userPermissions).filter(module => 
     userPermissions[module].can_view
   )
+
+  const merged = new Set([...fallback, ...explicit])
+  return Array.from(merged)
 }
 
 /**
@@ -153,21 +181,19 @@ export function validateModuleAccess(moduleName) {
  * Obtener objeto de permisos para un módulo específico
  */
 export function getModulePermissions(moduleName) {
-  if (currentUserRole === 'admin') {
-    return {
-      can_view: true,
-      can_create: true,
-      can_edit: true,
-      can_delete: true
-    }
-  }
-  
   return userPermissions?.[moduleName] || {
-    can_view: false,
-    can_create: false,
-    can_edit: false,
+    can_view: canViewModule(moduleName),
+    can_create: canCreateInModule(moduleName),
+    can_edit: canEditInModule(moduleName),
     can_delete: false
   }
+}
+
+/**
+ * Obtener el rol activo actual
+ */
+export function getCurrentRole() {
+  return currentUserRole
 }
 
 /**

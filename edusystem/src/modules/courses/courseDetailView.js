@@ -948,7 +948,15 @@ async function renderStudentsTab(container) {
  * Funciones públicas expuestas globalmente
  */
 window.courseDetailView = {
-  goBack: () => {
+  goBack: async () => {
+    const mainContent = document.getElementById('main-content')
+
+    if (mainContent) {
+      const { renderCoursesView } = await import('./coursesView.js')
+      await renderCoursesView(mainContent)
+      return
+    }
+
     window.location.hash = '#/courses'
   },
   

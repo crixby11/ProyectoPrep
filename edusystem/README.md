@@ -93,6 +93,7 @@ edusystem/
 
 - **[GETTING_STARTED.md](./GETTING_STARTED.md)** - Guía paso a paso para principiantes
 - **[database/README.md](./database/README.md)** - Configuración de base de datos
+- **[docs/SUPABASE_EDGE_FUNCTIONS.md](./docs/SUPABASE_EDGE_FUNCTIONS.md)** - Deploy de funciones administrativas
 - **[TESTING.md](./TESTING.md)** - Cómo testear el sistema
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Deploy a producción
 

@@ -1,3 +1,4 @@
+import 'bootstrap/dist/css/bootstrap.min.css'
 import './styles/main.css'
 import { supabase } from './lib/supabaseClient.js'
 import { initAuth } from './components/auth/authHandler.js'

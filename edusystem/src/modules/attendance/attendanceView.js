@@ -3,16 +3,20 @@ import { supabase } from '../../lib/supabaseClient.js'
 let selectedDate = new Date().toISOString().split('T')[0]
 let selectedSectionId = null
 let currentCourses = []
+let currentOptions = {}
 
 /**
  * Renderiza la vista principal de asistencia
  */
-export async function renderAttendanceView(container) {
+export async function renderAttendanceView(container, options = {}) {
+  currentOptions = options
+
   // Cargar todas las secciones de cursos
-  const { data: sections, error } = await supabase
+  let query = supabase
     .from('course_sections')
     .select(`
       id,
+      teacher_id,
       periodo,
       nombre,
       curso:courses(
@@ -22,6 +26,12 @@ export async function renderAttendanceView(container) {
       )
     `)
     .order('periodo', { ascending: false })
+
+  if (options.teacherId) {
+    query = query.eq('teacher_id', options.teacherId)
+  }
+
+  const { data: sections, error } = await query
 
   if (error) {
     container.innerHTML = `
@@ -40,7 +50,7 @@ export async function renderAttendanceView(container) {
       <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h2><i class="bi bi-calendar-check-fill me-2" style="color: #4a90e2;"></i>Control de Asistencia</h2>
-          <p class="text-muted mb-0">Registra la asistencia diaria de estudiantes por curso</p>
+          <p class="text-muted mb-0">${options.teacherId ? 'Registra asistencia de tus grupos asignados' : 'Registra la asistencia diaria de estudiantes por curso'}</p>
         </div>
         <div>
           <input type="date" class="form-control" id="attendanceDate" value="${selectedDate}">
@@ -102,7 +112,7 @@ export async function renderAttendanceView(container) {
  */
 function renderCourseCards(sections) {
   if (!sections || sections.length === 0) {
-    return '<div class="col-12"><div class="alert alert-info">No hay cursos disponibles</div></div>'
+    return `<div class="col-12"><div class="alert alert-info">${currentOptions.teacherId ? 'No tienes grupos asignados para asistencia.' : 'No hay cursos disponibles'}</div></div>`
   }
 
   return sections.map(section => {

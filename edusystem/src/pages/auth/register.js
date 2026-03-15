@@ -89,12 +89,10 @@ export function renderRegister(container) {
                 <label for="rol" class="form-label">Tipo de cuenta *</label>
                 <select id="rol" class="form-control" required>
                   <option value="">Selecciona...</option>
-                  <option value="admin">👑 Administrador (Acceso completo)</option>
-                  <option value="teacher">👨‍🏫 Maestro</option>
-                  <option value="student">👨‍🎓 Estudiante</option>
-                  <option value="parent">👨‍👩‍👧 Padre/Tutor</option>
+                  <option value="teacher">Maestro</option>
+                  <option value="student">Estudiante</option>
+                  <option value="parent">Padre/Tutor</option>
                 </select>
-                <small class="form-text">Selecciona Admin para desarrollo</small>
               </div>
               
               <div class="form-group">
