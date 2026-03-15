@@ -84,10 +84,8 @@ async function renderAvailableCourses(container, user) {
           creditos
         ),
         profiles (
-          primer_nombre,
-          segundo_nombre,
-          apellido_paterno,
-          apellido_materno
+          nombre,
+          apellido
         )
       `)
       .eq('activo', true)
@@ -136,7 +134,7 @@ async function renderAvailableCourses(container, user) {
       const course = section.courses
       const teacher = section.profiles
       const teacherName = teacher ? 
-        `${teacher.primer_nombre || ''} ${teacher.apellido_paterno || ''}`.trim() : 
+        `${teacher.nombre || ''} ${teacher.apellido || ''}`.trim() : 
         'Sin asignar'
       const quotaPercent = Math.round((section.enrolledCount / section.cupo_maximo) * 100)
       const quotaClass = section.availableQuota === 0 ? 'danger' : 
@@ -491,8 +489,8 @@ async function renderMyCourses(container, user) {
           codigo
         ),
         profiles (
-          primer_nombre,
-          apellido_paterno
+          nombre,
+          apellido
         )
       )
     `)
@@ -526,6 +524,15 @@ async function renderMyCourses(container, user) {
       </div>
     </section>
   `
+
+  // Add event listeners to view details buttons
+  container.querySelectorAll('.btn-view-student-course').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const sectionId = e.currentTarget.dataset.sectionId
+      const enrollmentId = e.currentTarget.dataset.enrollmentId
+      showStudentCourseDetails(container, sectionId, enrollmentId, user)
+    })
+  })
 }
 
 async function renderMyProgress(container, user) {
@@ -583,17 +590,623 @@ async function renderMyProgress(container, user) {
   `
 }
 
+// Student Course Details View
+async function showStudentCourseDetails(container, sectionId, enrollmentId, user) {
+  const { data: section, error } = await supabase
+    .from('course_sections')
+    .select(`
+      id,
+      nombre,
+      periodo,
+      cupo_maximo,
+      modalidad,
+      aula,
+      activo,
+      teacher:profiles(primer_nombre, apellido_paterno, email),
+      curso:courses (
+        id,
+        nombre,
+        codigo,
+        descripcion,
+        creditos
+      ),
+      schedules (
+        dia_semana,
+        hora_inicio,
+        hora_fin
+      )
+    `)
+    .eq('id', sectionId)
+    .single()
+
+  if (error) {
+    container.innerHTML = `<div class="alert alert-danger">Error cargando detalles del curso: ${error.message}</div>`
+    return
+  }
+
+  const course = section.curso
+  const teacher = section.teacher
+
+  const { count: enrollmentCount } = await supabase
+    .from('enrollments')
+    .select('*', { count: 'exact', head: true })
+    .eq('section_id', sectionId)
+    .eq('estado', 'activo')
+
+  const schedules = section.schedules || []
+  const teacherDisplayName = [teacher?.nombre, teacher?.apellido]
+    .filter(Boolean)
+    .join(' ') || 'Docente'
+
+  const html = `
+    <div class="course-detail-view">
+      <!-- Header Compacto -->
+      <div class="bg-white border-bottom shadow-sm">
+        <div class="d-flex align-items-center justify-content-between px-4 py-2">
+          <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-sm btn-outline-secondary" id="btn-back-student-courses">
+              <i class="bi bi-arrow-left"></i>
+            </button>
+            <div>
+              <h5 class="mb-0" style="font-weight: 600; color: #2c3e50;">${course?.nombre || 'Curso'}</h5>
+              <small class="text-muted">${course?.codigo || '-'} • ${teacherDisplayName} • ${enrollmentCount || 0} estudiantes</small>
+            </div>
+          </div>
+          <div>
+            ${section.activo 
+              ? '<span class="badge bg-success">Activo</span>'
+              : '<span class="badge bg-secondary">Inactivo</span>'}
+          </div>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="px-4">
+          <ul class="nav nav-tabs border-0 course-nav-tabs">
+            <li class="nav-item">
+              <a class="nav-link course-nav-item active" href="#" data-tab="general">
+                <i class="bi bi-house-door-fill me-1"></i>Inicio
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link course-nav-item" href="#" data-tab="announcements">
+                <i class="bi bi-megaphone-fill me-1"></i>Anuncios
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link course-nav-item" href="#" data-tab="modules">
+                <i class="bi bi-folder-fill me-1"></i>Módulos
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link course-nav-item" href="#" data-tab="assignments">
+                <i class="bi bi-file-text-fill me-1"></i>Tareas
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link course-nav-item" href="#" data-tab="grades">
+                <i class="bi bi-bar-chart-fill me-1"></i>Calificaciones
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link course-nav-item" href="#" data-tab="attendance">
+                <i class="bi bi-calendar-check-fill me-1"></i>Asistencia
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Contenido -->
+      <div id="student-course-tab-content" style="background: #f8f9fa; min-height: 500px; padding: 20px;">
+        <!-- El contenido se carga aquí -->
+      </div>
+
+      <style>
+        .course-nav-item {
+          color: #6c757d;
+          padding: 0.75rem 1rem;
+          border: none;
+          border-bottom: 3px solid transparent;
+          transition: all 0.2s;
+          font-weight: 500;
+          font-size: 0.875rem;
+          background: transparent !important;
+          text-decoration: none;
+        }
+        
+        .course-nav-item:hover {
+          color: #4a90e2;
+          border-bottom-color: #d1e7ff;
+          background: transparent !important;
+        }
+        
+        .course-nav-item.active {
+          color: #4a90e2;
+          border-bottom-color: #4a90e2;
+          background: transparent !important;
+        }
+      </style>
+    </div>
+  `
+
+  container.innerHTML = html
+
+  // Back button
+  document.getElementById('btn-back-student-courses').addEventListener('click', async () => {
+    await renderMyCourses(container, user)
+  })
+
+  // Tab navigation
+  document.querySelectorAll('.course-nav-item').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault()
+      const tab = e.currentTarget.dataset.tab
+      
+      document.querySelectorAll('.course-nav-item').forEach(l => {
+        l.classList.remove('active')
+      })
+      e.currentTarget.classList.add('active')
+      
+      loadStudentTabContent(tab, sectionId, enrollmentId, user)
+    })
+  })
+
+  // Load default tab
+  await loadStudentTabContent('general', sectionId, enrollmentId, user)
+}
+
+// Load tab content for student view
+async function loadStudentTabContent(tabName, sectionId, enrollmentId, user) {
+  const contentDiv = document.getElementById('student-course-tab-content')
+  
+  switch(tabName) {
+    case 'general':
+      await loadStudentGeneralTab(contentDiv, sectionId)
+      break
+    case 'announcements':
+      await loadStudentAnuncios(sectionId)
+      break
+    case 'modules':
+      await loadStudentModulos(sectionId)
+      break
+    case 'assignments':
+      await loadStudentTareas(sectionId, enrollmentId, user)
+      break
+    case 'grades':
+      await loadStudentCalificaciones(enrollmentId)
+      break
+    case 'attendance':
+      await loadStudentAsistencia(sectionId, user)
+      break
+  }
+}
+
+async function loadStudentGeneralTab(contentDiv, sectionId) {
+  if (!contentDiv) return
+  
+  const { data: section } = await supabase
+    .from('course_sections')
+    .select(`
+      *,
+      curso:courses (nombre, codigo, descripcion, creditos),
+      teacher:profiles(primer_nombre, apellido_paterno, email),
+      schedules(dia_semana, hora_inicio, hora_fin)
+    `)
+    .eq('id', sectionId)
+    .single()
+
+  const course = section.curso
+  const teacher = section.teacher
+  const { count: enrollmentCount } = await supabase
+    .from('enrollments')
+    .select('*', { count: 'exact', head: true })
+    .eq('section_id', sectionId)
+    .eq('estado', 'activo')
+
+  const scheduleText = section.schedules?.length
+    ? section.schedules.map(s => {
+        const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+        return `${dias[s.dia_semana] || 'Día'} ${s.hora_inicio?.slice(0, 5) || '--:--'}-${s.hora_fin?.slice(0, 5) || '--:--'}`
+      }).join(' | ')
+    : 'Horario no definido'
+
+  const html = `
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-lg-8">
+          <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+              <h5 class="card-title mb-3">${course?.nombre || 'Curso'}</h5>
+              <p class="text-muted mb-3">${course?.descripcion || 'Sin descripción'}</p>
+              
+              <h6 class="mb-3">Información del Curso</h6>
+              <div class="row">
+                <div class="col-6 mb-3">
+                  <small class="text-muted d-block">Código</small>
+                  <strong>${course?.codigo || '-'}</strong>
+                </div>
+                <div class="col-6 mb-3">
+                  <small class="text-muted d-block">Créditos</small>
+                  <strong>${course?.creditos || 0}</strong>
+                </div>
+                <div class="col-6 mb-3">
+                  <small class="text-muted d-block">Período</small>
+                  <strong>${section.periodo || '-'}</strong>
+                </div>
+                <div class="col-6 mb-3">
+                  <small class="text-muted d-block">Modalidad</small>
+                  <strong>${section.modalidad || '-'}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Statistics -->
+          <div class="row">
+            <div class="col-md-4 mb-4">
+              <div class="card border-0 shadow-sm text-center">
+                <div class="card-body">
+                  <small class="text-muted d-block mb-2">Cupo Total</small>
+                  <h4 class="mb-0">${section.cupo_maximo || 0}</h4>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4 mb-4">
+              <div class="card border-0 shadow-sm text-center">
+                <div class="card-body">
+                  <small class="text-muted d-block mb-2">Inscritos</small>
+                  <h4 class="mb-0">${enrollmentCount || 0}</h4>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4 mb-4">
+              <div class="card border-0 shadow-sm text-center">
+                <div class="card-body">
+                  <small class="text-muted d-block mb-2">Disponibles</small>
+                  <h4 class="mb-0 ${(section.cupo_maximo - (enrollmentCount || 0)) > 0 ? 'text-success' : 'text-danger'}">${Math.max(0, section.cupo_maximo - (enrollmentCount || 0))}</h4>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-lg-4">
+          <!-- Profesor -->
+          <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body text-center">
+              <div class="mb-3">
+                <div style="width: 80px; height: 80px; margin: 0 auto; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 32px;">
+                  <i class="bi bi-person"></i>
+                </div>
+              </div>
+              <h6 class="mb-1">${teacher?.nombre || '-'} ${teacher?.apellido || ''}</h6>
+              <small class="text-muted d-block">${teacher?.email || '-'}</small>
+            </div>
+          </div>
+
+          <!-- Horarios -->
+          <div class="card border-0 shadow-sm">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="bi bi-clock me-2"></i>Horarios
+              </h6>
+              <div class="text-muted small">${scheduleText}</div>
+              ${section.aula ? `<div class="mt-3 pt-3 border-top"><small class="text-muted">Aula:</small> <strong>${section.aula}</strong></div>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+
+  contentDiv.innerHTML = html
+}
+
+async function loadStudentAnuncios(sectionId) {
+  const container = document.getElementById('student-course-tab-content')
+  if (!container) return
+  
+  container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>'
+  
+  const { data: anuncios, error } = await supabase
+    .from('announcements')
+    .select('*')
+    .eq('section_id', sectionId)
+    .order('created_at', { ascending: false })
+
+  if (error || !anuncios?.length) {
+    container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay anuncios disponibles</div>'
+    return
+  }
+
+  const html = `
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-lg-8">
+          ${anuncios.map(ann => `
+            <div class="card border-0 shadow-sm mb-3">
+              <div class="card-body">
+                <h6 class="card-title">${ann.titulo || 'Sin título'}</h6>
+                <p class="card-text text-muted mb-2">${ann.contenido || ''}</p>
+                <small class="text-muted"><i class="bi bi-calendar"></i> ${new Date(ann.created_at).toLocaleDateString('es-ES')}</small>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `
+  container.innerHTML = html
+}
+
+async function loadStudentModulos(sectionId) {
+  const container = document.getElementById('student-course-tab-content')
+  if (!container) return
+  
+  container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>'
+  
+  const { data: modulos, error } = await supabase
+    .from('study_resources')
+    .select('*')
+    .eq('section_id', sectionId)
+    .eq('tipo', 'documento')
+    .order('created_at', { ascending: true })
+
+  if (error || !modulos?.length) {
+    container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay módulos disponibles</div>'
+    return
+  }
+
+  const html = `
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-lg-8">
+          ${modulos.map((mod, idx) => `
+            <div class="card border-0 shadow-sm mb-3">
+              <div class="card-body">
+                <h6 class="card-title"><span class="badge bg-primary me-2">${idx + 1}</span>${mod.titulo || 'Sin título'}</h6>
+                <p class="card-text text-muted mb-2">${mod.descripcion || ''}</p>
+                ${mod.archivo_url ? `<p class="mb-2"><a href="${mod.archivo_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i> Descargar archivo</a></p>` : ''}
+                <small class="text-muted"><i class="bi bi-calendar"></i> ${new Date(mod.created_at).toLocaleDateString('es-ES')}</small>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `
+  container.innerHTML = html
+}
+
+async function loadStudentTareas(sectionId, enrollmentId, user) {
+  const container = document.getElementById('student-course-tab-content')
+  if (!container) return
+  
+  container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>'
+  
+  const { data: tareas, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('section_id', sectionId)
+    .order('fecha_limite', { ascending: true })
+
+  if (error || !tareas?.length) {
+    container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay tareas disponibles</div>'
+    return
+  }
+
+  const html = `
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-lg-10">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Título</th>
+                  <th>Descripción</th>
+                  <th>Fecha Entrega</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tareas.map(tarea => `
+                  <tr>
+                    <td><strong>${tarea.titulo || '-'}</strong></td>
+                    <td>${tarea.descripcion?.substring(0, 50) || '-'}${tarea.descripcion?.length > 50 ? '...' : ''}</td>
+                    <td><small>${tarea.fecha_limite ? new Date(tarea.fecha_limite).toLocaleDateString('es-ES') : '-'}</small></td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-primary btn-submit-task" data-task-id="${tarea.id}" data-enrollment-id="${enrollmentId}">
+                        <i class="bi bi-upload"></i> Enviar Trabajo
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+  container.innerHTML = html
+
+  document.querySelectorAll('.btn-submit-task').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      alert('Funcionalidad de envío de trabajos - será implementada con módulo de archivos')
+    })
+  })
+}
+
+async function loadStudentCalificaciones(enrollmentId) {
+  const container = document.getElementById('student-course-tab-content')
+  if (!container) return
+  
+  container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>'
+  
+  const { data: enrollment, error } = await supabase
+    .from('enrollments')
+    .select('*')
+    .eq('id', enrollmentId)
+    .single()
+
+  if (error) {
+    container.innerHTML = `<div class="alert alert-danger">Error cargando calificación: ${error.message}</div>`
+    return
+  }
+
+  const calif = enrollment?.calificacion_final
+  const statusBadge = !calif 
+    ? '<span class="badge bg-warning">Pendiente</span>'
+    : calif >= 3.0 
+    ? '<span class="badge bg-success">Aprobado</span>'
+    : '<span class="badge bg-danger">No aprobado</span>'
+
+  const html = `
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-lg-8">
+          <div class="card border-0 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title mb-4">Mi Calificación</h5>
+              
+              <div class="row mb-4">
+                <div class="col-md-6">
+                  <div class="card bg-light border-0">
+                    <div class="card-body text-center">
+                      <small class="text-muted d-block mb-2">Calificación Final</small>
+                      <h3 class="mb-2">${calif !== null ? calif.toFixed(1) : '-'}</h3>
+                      <div>${statusBadge}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card bg-light border-0">
+                    <div class="card-body">
+                      <small class="text-muted d-block mb-2">Comentarios del Docente</small>
+                      <p class="mb-0">${enrollment?.comentarios || '<em class="text-muted">Sin comentarios aún</em>'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+  container.innerHTML = html
+}
+
+async function loadStudentAsistencia(sectionId, user) {
+  const container = document.getElementById('student-course-tab-content')
+  if (!container) return
+  
+  container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>'
+  
+  const { data: attendance, error } = await supabase
+    .from('attendance')
+    .select('*')
+    .eq('section_id', sectionId)
+    .eq('student_id', user.id)
+    .order('fecha', { ascending: false })
+    .limit(50)
+
+  if (error || !attendance?.length) {
+    container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay registros de asistencia</div>'
+    return
+  }
+
+  const asistencias = attendance.filter(a => a.estado === 'presente').length
+  const faltas = attendance.filter(a => a.estado === 'ausente').length
+  const justificadas = attendance.filter(a => a.estado === 'justificado').length
+  const porcentaje = Math.round((asistencias / attendance.length) * 100)
+
+  const html = `
+    <div class="container-fluid">
+      <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+          <div class="card text-center border-0 shadow-sm">
+            <div class="card-body">
+              <small class="text-muted">Asistencias</small>
+              <h4 class="text-success">${asistencias}</h4>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 mb-3">
+          <div class="card text-center border-0 shadow-sm">
+            <div class="card-body">
+              <small class="text-muted">Faltas</small>
+              <h4 class="text-danger">${faltas}</h4>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 mb-3">
+          <div class="card text-center border-0 shadow-sm">
+            <div class="card-body">
+              <small class="text-muted">Justificadas</small>
+              <h4 class="text-warning">${justificadas}</h4>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 mb-3">
+          <div class="card text-center border-0 shadow-sm">
+            <div class="card-body">
+              <small class="text-muted">% Asistencia</small>
+              <h4 class="text-info">${porcentaje}%</h4>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-lg-10">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${attendance.map(att => {
+                  const statusBadge = att.estado === 'asistente'
+                    ? '<span class="badge bg-success">Asistente</span>'
+                    : att.estado === 'falta'
+                    ? '<span class="badge bg-danger">Falta</span>'
+                    : '<span class="badge bg-warning">Justificado</span>'
+                  
+                  return `
+                    <tr>
+                      <td>${new Date(att.fecha).toLocaleDateString('es-ES')}</td>
+                      <td>${statusBadge}</td>
+                    </tr>
+                  `
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+  
+  container.innerHTML = html
+}
+
 function renderStudentEnrollmentCard(item) {
   const section = item.section
   const course = section?.curso
   const teacher = section?.profiles
 
   const teacherName = teacher
-    ? `${teacher.primer_nombre || ''} ${teacher.apellido_paterno || ''}`.trim()
+    ? `${teacher.nombre || ''} ${teacher.apellido || ''}`.trim()
     : 'Docente por asignar'
 
   return `
-    <article class="portal-course-item">
+    <article class="portal-course-item" data-enrollment-id="${item.id}" data-section-id="${section?.id}">
       <div>
         <h5>${course?.nombre || 'Curso sin nombre'}</h5>
         <p>${course?.codigo || '-'} · ${section?.periodo || 'Periodo pendiente'} · ${section?.nombre || 'Sección'}</p>
@@ -603,6 +1216,11 @@ function renderStudentEnrollmentCard(item) {
         <span><i class="bi bi-laptop"></i>${section?.modalidad || 'sin modalidad'}</span>
         <span><i class="bi bi-award"></i>Final: ${formatGrade(item.final_grade)}</span>
         <span><i class="bi bi-check2-circle"></i>${translateStatus(item.status)}</span>
+      </div>
+      <div style="margin-top: 10px;">
+        <button class="btn btn-sm btn-outline-primary btn-view-student-course" data-enrollment-id="${item.id}" data-section-id="${section?.id}">
+          <i class="bi bi-eye me-1"></i> Ver Detalles
+        </button>
       </div>
     </article>
   `
