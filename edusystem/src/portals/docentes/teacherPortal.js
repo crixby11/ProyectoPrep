@@ -1163,14 +1163,25 @@ async function loadEstudiantes(sectionId) {
     .in('id', studentIds)
 
   if (studentsError) {
+    console.error('Error en query students:', studentsError)
     container.innerHTML = `<div class="alert alert-danger">Error cargando perfiles: ${studentsError.message}</div>`
+    return
+  }
+
+  if (!students?.length) {
+    console.error('No students returned. Enrollments:', enrollments, 'Student IDs:', studentIds)
+    container.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>No se encontraron datos de estudiantes</div>'
     return
   }
 
   // Crear un mapa de student_id -> profile
   const studentMap = {}
   students.forEach(s => {
-    studentMap[s.id] = s.profile
+    if (s.profile) {
+      studentMap[s.id] = s.profile
+    } else {
+      console.warn('Estudiante sin profile:', s)
+    }
   })
 
   const html = `
@@ -1193,6 +1204,9 @@ async function loadEstudiantes(sectionId) {
               <tbody>
                 ${enrollments.map(enr => {
                   const profile = studentMap[enr.student_id]
+                  if (!profile) {
+                    console.warn('No profile for enrollment:', enr)
+                  }
                   const statusBadge = enr.estado === 'activo'
                     ? '<span class="badge bg-success">Activo</span>'
                     : enr.estado === 'retirado'
@@ -1201,8 +1215,8 @@ async function loadEstudiantes(sectionId) {
                   
                   return `
                     <tr>
-                      <td><strong>${profile?.nombre || '-'} ${profile?.apellido || ''}</strong></td>
-                      <td>${profile?.email || '-'}</td>
+                      <td><strong>${profile?.nombre || 'Sin nombre'} ${profile?.apellido || ''}</strong></td>
+                      <td>${profile?.email || 'Sin email'}</td>
                       <td><small>${new Date(enr.fecha_inscripcion).toLocaleDateString('es-ES')}</small></td>
                       <td>${statusBadge}</td>
                     </tr>
