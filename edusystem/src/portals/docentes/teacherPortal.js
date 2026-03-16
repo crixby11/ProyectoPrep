@@ -1115,25 +1115,40 @@ async function loadEstudiantes(sectionId) {
   
   container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>'
   
-  const { data: enrollments, error } = await supabase
+  // Primero obtener enrollments
+  const { data: enrollments, error: enrollError } = await supabase
     .from('enrollments')
-    .select(`
-      id,
-      student_id,
-      student:student_id(
-        id,
-        profile:profile_id(nombre, apellido, email)
-      ),
-      fecha_inscripcion,
-      estado
-    `)
+    .select('id, student_id, fecha_inscripcion, estado')
     .eq('section_id', sectionId)
-    .order('student.profile.apellido', { ascending: true })
+    .order('fecha_inscripcion', { ascending: false })
 
-  if (error || !enrollments?.length) {
+  if (enrollError || !enrollments?.length) {
     container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay estudiantes inscritos</div>'
     return
   }
+
+  // Obtener los student_ids
+  const studentIds = enrollments.map(e => e.student_id)
+
+  // Luego obtener los datos de students y profiles
+  const { data: students, error: studentsError } = await supabase
+    .from('students')
+    .select(`
+      id,
+      profile:profile_id(nombre, apellido, email)
+    `)
+    .in('id', studentIds)
+
+  if (studentsError) {
+    container.innerHTML = `<div class="alert alert-danger">Error cargando perfiles: ${studentsError.message}</div>`
+    return
+  }
+
+  // Crear un mapa de student_id -> profile
+  const studentMap = {}
+  students.forEach(s => {
+    studentMap[s.id] = s.profile
+  })
 
   const html = `
     <div class="container-fluid">
@@ -1154,7 +1169,7 @@ async function loadEstudiantes(sectionId) {
               </thead>
               <tbody>
                 ${enrollments.map(enr => {
-                  const profile = enr.student?.profile
+                  const profile = studentMap[enr.student_id]
                   const statusBadge = enr.estado === 'activo'
                     ? '<span class="badge bg-success">Activo</span>'
                     : enr.estado === 'retirado'
