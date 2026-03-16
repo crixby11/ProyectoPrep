@@ -902,30 +902,39 @@ async function loadCalificaciones(sectionId) {
   
   container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>'
   
-  const { data: enrollments, error } = await supabase
+  // Query 1: Get enrollments
+  const { data: enrollments, error: enrollError } = await supabase
     .from('enrollments')
-    .select(`
-      id,
-      student_id,
-      calificacion_final,
-      students (
-        id,
-        profile_id,
-        profiles(nombre, apellido, email)
-      )
-    `)
+    .select('id, student_id, calificacion_final')
     .eq('section_id', sectionId)
-    .eq('estado', 'activo')
 
-  if (error) {
-    container.innerHTML = `<div class="alert alert-danger">Error cargando calificaciones: ${error.message}</div>`
+  if (enrollError) {
+    container.innerHTML = `<div class="alert alert-danger">Error cargando calificaciones: ${enrollError.message}</div>`
     return
   }
 
+  if (!enrollments?.length) {
+    container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay estudiantes inscritos</div>'
+    return
+  }
+
+  // Query 2: Get student profiles
+  const studentIds = enrollments.map(e => e.student_id)
+  const { data: students } = await supabase
+    .from('students')
+    .select('id, profile:profile_id(nombre, apellido, email)')
+    .in('id', studentIds)
+
+  // Create map
+  const studentMap = {}
+  students?.forEach(s => {
+    studentMap[s.id] = s.profile
+  })
+
   // Sort by apellido client-side
-  const sorted = (enrollments || []).sort((a, b) => {
-    const apellidoA = (a.students?.profiles?.apellido || '').toLowerCase()
-    const apellidoB = (b.students?.profiles?.apellido || '').toLowerCase()
+  const sorted = enrollments.sort((a, b) => {
+    const apellidoA = (studentMap[a.student_id]?.apellido || '').toLowerCase()
+    const apellidoB = (studentMap[b.student_id]?.apellido || '').toLowerCase()
     return apellidoA.localeCompare(apellidoB)
   })
 
@@ -947,7 +956,7 @@ async function loadCalificaciones(sectionId) {
               </thead>
               <tbody>
                 ${(sorted || []).map(enr => {
-                  const profile = enr.students?.profiles
+                  const profile = studentMap[enr.student_id]
                   const calif = enr.calificacion_final
                   const statusBadge = !calif 
                     ? '<span class="badge bg-warning">Pendiente</span>'
