@@ -70,23 +70,52 @@ function showSuccessNotification(title, details) {
  * Renderiza la vista de inscripciones
  */
 export async function renderEnrollmentsView(container) {
-  // Cargar inscripciones con información relacionada
+  // Cargar inscripciones básicas
   const { data: enrollments, error } = await supabase
     .from('enrollments')
-    .select(`
-      *,
-      student:student_id (id, nombre, matricula, email),
-      section:section_id (
-        id, 
-        nombre,
-        course:course_id (id, nombre, codigo)
-      )
-    `)
+    .select('*')
     .order('created_at', { ascending: false })
   
   if (error) {
     console.error('Error cargando inscripciones:', error)
   }
+
+  if (!enrollments?.length) {
+    container.innerHTML = `
+      <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        No hay inscripciones registradas
+      </div>
+    `
+    return
+  }
+
+  // Obtener IDs únicos
+  const studentIds = [...new Set(enrollments.map(e => e.student_id))]
+  const sectionIds = [...new Set(enrollments.map(e => e.section_id))]
+
+  // Consultar students con perfiles
+  const { data: students } = await supabase
+    .from('students')
+    .select('id, matricula, profile:profile_id(nombre, apellido, email)')
+    .in('id', studentIds)
+
+  // Consultar sections con courses
+  const { data: sections } = await supabase
+    .from('course_sections')
+    .select('id, nombre, course:course_id(id, nombre, codigo)')
+    .in('id', sectionIds)
+
+  // Crear mapas para lookup
+  const studentMap = {}
+  students?.forEach(s => {
+    studentMap[s.id] = { ...s.profile, matricula: s.matricula }
+  })
+
+  const sectionMap = {}
+  sections?.forEach(s => {
+    sectionMap[s.id] = s
+  })
   
   container.innerHTML = `
     <div class="container-fluid">
@@ -112,10 +141,9 @@ export async function renderEnrollmentsView(container) {
             <div class="col-md-3">
               <select class="form-control" id="filterStatus">
                 <option value="">Todos los estados</option>
-                <option value="enrolled">Inscrito</option>
-                <option value="completed">Completado</option>
-                <option value="dropped">Retirado</option>
-                <option value="withdrawn">Dado de baja</option>
+                <option value="activo">Activo</option>
+                <option value="completado">Completado</option>
+                <option value="retirado">Retirado</option>
               </select>
             </div>
             <div class="col-md-2">
@@ -151,7 +179,7 @@ export async function renderEnrollmentsView(container) {
               <div class="d-flex justify-content-between align-items-center">
                 <div>
                   <p class="text-muted mb-1">Activas</p>
-                  <h3 class="mb-0">${enrollments?.filter(e => e.status === 'enrolled').length || 0}</h3>
+                  <h3 class="mb-0">${enrollments?.filter(e => e.estado === 'activo').length || 0}</h3>
                 </div>
                 <div class="icon-box bg-success bg-opacity-10 text-success">
                   <i class="bi bi-check-circle fs-4"></i>
@@ -166,7 +194,7 @@ export async function renderEnrollmentsView(container) {
               <div class="d-flex justify-content-between align-items-center">
                 <div>
                   <p class="text-muted mb-1">Completadas</p>
-                  <h3 class="mb-0">${enrollments?.filter(e => e.status === 'completed').length || 0}</h3>
+                  <h3 class="mb-0">${enrollments?.filter(e => e.estado === 'completado').length || 0}</h3>
                 </div>
                 <div class="icon-box bg-info bg-opacity-10 text-info">
                   <i class="bi bi-trophy fs-4"></i>
@@ -181,7 +209,7 @@ export async function renderEnrollmentsView(container) {
               <div class="d-flex justify-content-between align-items-center">
                 <div>
                   <p class="text-muted mb-1">Retiradas</p>
-                  <h3 class="mb-0">${enrollments?.filter(e => e.status === 'dropped' || e.status === 'withdrawn').length || 0}</h3>
+                  <h3 class="mb-0">${enrollments?.filter(e => e.estado === 'retirado').length || 0}</h3>
                 </div>
                 <div class="icon-box bg-warning bg-opacity-10 text-warning">
                   <i class="bi bi-exclamation-triangle fs-4"></i>
@@ -211,21 +239,22 @@ export async function renderEnrollmentsView(container) {
               </thead>
               <tbody id="enrollmentsTableBody">
                 ${enrollments && enrollments.length > 0 ? enrollments.map(enrollment => {
+                  const student = studentMap[enrollment.student_id]
+                  const section = sectionMap[enrollment.section_id]
                   const statusBadges = {
-                    enrolled: '<span class="badge bg-success">Inscrito</span>',
-                    completed: '<span class="badge bg-info">Completado</span>',
-                    dropped: '<span class="badge bg-warning">Retirado</span>',
-                    withdrawn: '<span class="badge bg-danger">Dado de baja</span>'
+                    activo: '<span class="badge bg-success">Activo</span>',
+                    completado: '<span class="badge bg-info">Completado</span>',
+                    retirado: '<span class="badge bg-warning">Retirado</span>'
                   }
                   return `
                     <tr>
-                      <td>${enrollment.student?.nombre || 'No disponible'}</td>
-                      <td><strong>${enrollment.student?.matricula || 'N/A'}</strong></td>
-                      <td>${enrollment.section?.course?.nombre || 'No disponible'}</td>
-                      <td><span class="badge bg-secondary">${enrollment.section?.nombre || 'N/A'}</span></td>
-                      <td>${new Date(enrollment.enrollment_date).toLocaleDateString('es-HN')}</td>
-                      <td>${statusBadges[enrollment.status] || enrollment.status}</td>
-                      <td>${enrollment.final_grade ? `<span class="badge ${enrollment.final_grade >= 60 ? 'bg-success' : 'bg-danger'}">${enrollment.final_grade}</span>` : '<span class="text-muted">Pendiente</span>'}</td>
+                      <td>${student?.nombre || 'No disponible'}</td>
+                      <td><strong>${student?.matricula || 'N/A'}</strong></td>
+                      <td>${section?.course?.nombre || 'No disponible'}</td>
+                      <td><span class="badge bg-secondary">${section?.nombre || 'N/A'}</span></td>
+                      <td>${new Date(enrollment.fecha_inscripcion).toLocaleDateString('es-HN')}</td>
+                      <td>${statusBadges[enrollment.estado] || enrollment.estado}</td>
+                      <td>${enrollment.calificacion_final ? `<span class="badge ${enrollment.calificacion_final >= 3 ? 'bg-success' : 'bg-danger'}">${enrollment.calificacion_final}</span>` : '<span class="text-muted">Pendiente</span>'}</td>
                       <td>
                         <button class="btn btn-sm btn-outline-primary me-1" onclick="window.viewEnrollment('${enrollment.id}')">
                           <i class="bi bi-eye"></i>
@@ -254,6 +283,11 @@ export async function renderEnrollmentsView(container) {
   document.getElementById('filterStatus')?.addEventListener('change', filterEnrollments)
   document.getElementById('clearFilters')?.addEventListener('click', clearFilters)
   
+  // Crear referencias globales con enrollments y mapas para filtrado
+  window.allEnrollments = enrollments
+  window.studentMapGlobal = studentMap
+  window.sectionMapGlobal = sectionMap
+  
   // Exponer funciones globalmente
   window.viewEnrollment = viewEnrollmentDetails
   window.editEnrollment = editEnrollment
@@ -272,12 +306,12 @@ function filterEnrollments() {
   rows.forEach(row => {
     const text = row.textContent.toLowerCase()
     const matchesSearch = text.includes(searchTerm)
-    const matchesStatus = !statusFilter || text.includes(statusFilter === 'enrolled' ? 'inscrito' : 
-                                                        statusFilter === 'completed' ? 'completado' :
-                                                        statusFilter === 'dropped' ? 'retirado' :
-                                                        statusFilter === 'withdrawn' ? 'dado de baja' : '')
+    const isStatusMatch = !statusFilter || 
+      (statusFilter === 'activo' && text.includes('activo')) ||
+      (statusFilter === 'completado' && text.includes('completado')) ||
+      (statusFilter === 'retirado' && text.includes('retirado'))
     
-    row.style.display = matchesSearch && matchesStatus ? '' : 'none'
+    row.style.display = matchesSearch && isStatusMatch ? '' : 'none'
   })
 }
 
@@ -455,29 +489,34 @@ async function saveEnrollment(enrollmentId = null) {
 async function viewEnrollmentDetails(enrollmentId) {
   const { data: enrollment, error } = await supabase
     .from('enrollments')
-    .select(`
-      *,
-      student:student_id (id, nombre, matricula, email, telefono),
-      section:section_id (
-        id, 
-        nombre,
-        course:course_id (id, nombre, codigo, descripcion)
-      )
-    `)
+    .select('*')
     .eq('id', enrollmentId)
     .single()
-  
+
   if (error || !enrollment) {
     console.error('Error cargando detalles:', error)
     alert('No se pudo cargar la información de la inscripción')
     return
   }
+
+  // Get student
+  const { data: student } = await supabase
+    .from('students')
+    .select('id, matricula, profile:profile_id(nombre, apellido, email, telefono)')
+    .eq('id', enrollment.student_id)
+    .single()
+
+  // Get section with course
+  const { data: section } = await supabase
+    .from('course_sections')
+    .select('id, nombre, course:course_id(id, nombre, codigo, descripcion)')
+    .eq('id', enrollment.section_id)
+    .single()
   
   const statusLabels = {
-    enrolled: 'Inscrito',
-    completed: 'Completado',
-    dropped: 'Retirado',
-    withdrawn: 'Dado de baja'
+    activo: 'Activo',
+    completado: 'Completado',
+    retirado: 'Retirado'
   }
   
   const modalHtml = `
@@ -499,10 +538,10 @@ async function viewEnrollmentDetails(enrollmentId) {
                     <h6 class="mb-0"><i class="bi bi-person me-2"></i>Información del Estudiante</h6>
                   </div>
                   <div class="card-body">
-                    <p><strong>Nombre:</strong><br>${enrollment.student?.nombre || 'No disponible'}</p>
-                    <p><strong>Matrícula:</strong> ${enrollment.student?.matricula || 'N/A'}</p>
-                    <p><strong>Email:</strong> ${enrollment.student?.email || 'No especificado'}</p>
-                    <p><strong>Teléfono:</strong> ${enrollment.student?.telefono || 'No especificado'}</p>
+                    <p><strong>Nombre:</strong><br>${student?.profile?.nombre || 'No disponible'}</p>
+                    <p><strong>Matrícula:</strong> ${student?.matricula || 'N/A'}</p>
+                    <p><strong>Email:</strong> ${student?.profile?.email || 'No especificado'}</p>
+                    <p><strong>Teléfono:</strong> ${student?.profile?.telefono || 'No especificado'}</p>
                   </div>
                 </div>
               </div>
@@ -513,10 +552,10 @@ async function viewEnrollmentDetails(enrollmentId) {
                     <h6 class="mb-0"><i class="bi bi-book me-2"></i>Información del Curso</h6>
                   </div>
                   <div class="card-body">
-                    <p><strong>Curso:</strong><br>${enrollment.section?.course?.nombre || 'No disponible'}</p>
-                    <p><strong>Código:</strong> ${enrollment.section?.course?.codigo || 'N/A'}</p>
-                    <p><strong>Sección:</strong> ${enrollment.section?.nombre || 'N/A'}</p>
-                    <p><strong>Descripción:</strong><br>${enrollment.section?.course?.descripcion || 'No especificada'}</p>
+                    <p><strong>Curso:</strong><br>${section?.course?.nombre || 'No disponible'}</p>
+                    <p><strong>Código:</strong> ${section?.course?.codigo || 'N/A'}</p>
+                    <p><strong>Sección:</strong> ${section?.nombre || 'N/A'}</p>
+                    <p><strong>Descripción:</strong><br>${section?.course?.descripcion || 'No especificada'}</p>
                   </div>
                 </div>
               </div>
@@ -529,16 +568,15 @@ async function viewEnrollmentDetails(enrollmentId) {
                   <div class="card-body">
                     <div class="row">
                       <div class="col-md-4">
-                        <p><strong>Fecha de Inscripción:</strong><br>${new Date(enrollment.enrollment_date).toLocaleDateString('es-HN', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                        <p><strong>Fecha de Inscripción:</strong><br>${new Date(enrollment.fecha_inscripcion).toLocaleDateString('es-HN', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                       </div>
                       <div class="col-md-4">
-                        <p><strong>Estado:</strong><br><span class="badge ${enrollment.status === 'enrolled' ? 'bg-success' : enrollment.status === 'completed' ? 'bg-info' : 'bg-warning'}">${statusLabels[enrollment.status] || enrollment.status}</span></p>
+                        <p><strong>Estado:</strong><br><span class="badge ${enrollment.estado === 'activo' ? 'bg-success' : enrollment.estado === 'completado' ? 'bg-info' : 'bg-warning'}">${statusLabels[enrollment.estado] || enrollment.estado}</span></p>
                       </div>
                       <div class="col-md-4">
-                        <p><strong>Calificación Final:</strong><br>${enrollment.final_grade ? `<span class="badge ${enrollment.final_grade >= 60 ? 'bg-success' : 'bg-danger'} fs-6">${enrollment.final_grade}</span>` : '<span class="text-muted">Pendiente</span>'}</p>
+                        <p><strong>Calificación Final:</strong><br>${enrollment.calificacion_final ? `<span class="badge ${enrollment.calificacion_final >= 3 ? 'bg-success' : 'bg-danger'} fs-6">${enrollment.calificacion_final}</span>` : '<span class="text-muted">Pendiente</span>'}</p>
                       </div>
                     </div>
-                    ${enrollment.notes ? `<p class="mt-3"><strong>Notas:</strong><br>${enrollment.notes}</p>` : ''}
                   </div>
                 </div>
               </div>

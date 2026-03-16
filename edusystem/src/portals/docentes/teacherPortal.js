@@ -1001,7 +1001,7 @@ async function loadAsistencia(sectionId) {
   // Get enrolled students
   const { data: enrollments, error: enrollError } = await supabase
     .from('enrollments')
-    .select('id, student_id, students(id, profiles(id, nombre, apellido))')
+    .select('id, student_id')
     .eq('section_id', sectionId)
     .eq('estado', 'activo')
 
@@ -1010,10 +1010,33 @@ async function loadAsistencia(sectionId) {
     return
   }
 
+  if (!enrollments?.length) {
+    container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay estudiantes inscritos</div>'
+    return
+  }
+
+  // Get student data
+  const studentIds = enrollments.map(e => e.student_id)
+  const { data: students, error: studentsError } = await supabase
+    .from('students')
+    .select('id, profile:profile_id(nombre, apellido)')
+    .in('id', studentIds)
+
+  if (studentsError) {
+    container.innerHTML = `<div class="alert alert-danger">Error cargando datos: ${studentsError.message}</div>`
+    return
+  }
+
+  // Create student map
+  const studentMap = {}
+  students?.forEach(s => {
+    studentMap[s.id] = s.profile
+  })
+
   // Sort students by apellido client-side
-  const sorted = (enrollments || []).sort((a, b) => {
-    const aApellido = a.students?.profiles?.apellido || ''
-    const bApellido = b.students?.profiles?.apellido || ''
+  const sorted = enrollments.sort((a, b) => {
+    const aApellido = studentMap[a.student_id]?.apellido || ''
+    const bApellido = studentMap[b.student_id]?.apellido || ''
     return aApellido.localeCompare(bApellido)
   })
 
@@ -1037,7 +1060,7 @@ async function loadAsistencia(sectionId) {
       </div>
       <div class="row">
         <div class="col-lg-10">
-          ${!enrollments || enrollments.length === 0 
+          ${!sorted || sorted.length === 0 
             ? '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay estudiantes inscritos</div>'
             : `<form id="attendanceForm">
             <div class="table-responsive">
@@ -1051,7 +1074,7 @@ async function loadAsistencia(sectionId) {
                 </thead>
                 <tbody>
                   ${sorted.map(enrollment => {
-                    const student = enrollment.students?.profiles
+                    const student = studentMap[enrollment.student_id]
                     const currentStatus = attendanceMap.get(enrollment.student_id) || 'presente'
                     
                     return `
