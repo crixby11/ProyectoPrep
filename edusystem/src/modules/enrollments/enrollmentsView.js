@@ -252,9 +252,9 @@ export async function renderEnrollmentsView(container) {
                       <td><strong>${student?.matricula || 'N/A'}</strong></td>
                       <td>${section?.course?.nombre || 'No disponible'}</td>
                       <td><span class="badge bg-secondary">${section?.nombre || 'N/A'}</span></td>
-                      <td>${new Date(enrollment.fecha_inscripcion).toLocaleDateString('es-HN')}</td>
-                      <td><span class=\"badge bg-success\">Activo</span></td>
-                      <td>${enrollment.calificacion_final ? `<span class="badge ${enrollment.calificacion_final >= 3 ? 'bg-success' : 'bg-danger'}">${enrollment.calificacion_final}</span>` : '<span class="text-muted">Pendiente</span>'}</td>
+                      <td>${new Date(enrollment.enrollment_date).toLocaleDateString('es-HN')}</td>
+                      <td><span class="badge bg-success">Activo</span></td>
+                      <td>${enrollment.final_grade ? `<span class="badge ${enrollment.final_grade >= 3 ? 'bg-success' : 'bg-danger'}">${enrollment.final_grade}</span>` : '<span class="text-muted">Pendiente</span>'}</td>
                       <td>
                         <button class="btn btn-sm btn-outline-primary me-1" onclick="window.viewEnrollment('${enrollment.id}')">
                           <i class="bi bi-eye"></i>
@@ -568,13 +568,13 @@ async function viewEnrollmentDetails(enrollmentId) {
                   <div class="card-body">
                     <div class="row">
                       <div class="col-md-4">
-                        <p><strong>Fecha de Inscripción:</strong><br>${new Date(enrollment.fecha_inscripcion).toLocaleDateString('es-HN', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                        <p><strong>Fecha de Inscripción:</strong><br>${new Date(enrollment.enrollment_date).toLocaleDateString('es-HN', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                       </div>
                       <div class="col-md-4">
                         <p><strong>Estado:</strong><br><span class="badge bg-success">Activo</span></p>
                       </div>
                       <div class="col-md-4">
-                        <p><strong>Calificación Final:</strong><br>${enrollment.calificacion_final ? `<span class="badge ${enrollment.calificacion_final >= 3 ? 'bg-success' : 'bg-danger'} fs-6">${enrollment.calificacion_final}</span>` : '<span class="text-muted">Pendiente</span>'}</p>
+                        <p><strong>Calificación Final:</strong><br>${enrollment.final_grade ? `<span class="badge ${enrollment.final_grade >= 3 ? 'bg-success' : 'bg-danger'} fs-6">${enrollment.final_grade}</span>` : '<span class="text-muted">Pendiente</span>'}</p>
                       </div>
                     </div>
                   </div>

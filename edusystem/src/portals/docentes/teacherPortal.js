@@ -905,7 +905,7 @@ async function loadCalificaciones(sectionId) {
   // Query 1: Get enrollments
   const { data: enrollments, error: enrollError } = await supabase
     .from('enrollments')
-    .select('id, student_id, calificacion_final')
+    .select('id, student_id, final_grade')
     .eq('section_id', sectionId)
 
   if (enrollError) {
@@ -957,7 +957,7 @@ async function loadCalificaciones(sectionId) {
               <tbody>
                 ${(sorted || []).map(enr => {
                   const profile = studentMap[enr.student_id]
-                  const calif = enr.calificacion_final
+                  const calif = enr.final_grade
                   const statusBadge = !calif 
                     ? '<span class="badge bg-warning">Pendiente</span>'
                     : calif >= 3.0 
@@ -1150,9 +1150,9 @@ async function loadEstudiantes(sectionId) {
   // Primero obtener enrollments
   const { data: enrollments, error: enrollError } = await supabase
     .from('enrollments')
-    .select('id, student_id, fecha_inscripcion')
+    .select('id, student_id, enrollment_date')
     .eq('section_id', sectionId)
-    .order('fecha_inscripcion', { ascending: false })
+    .order('enrollment_date', { ascending: false })
 
   if (enrollError || !enrollments?.length) {
     container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay estudiantes inscritos</div>'
@@ -1221,7 +1221,7 @@ async function loadEstudiantes(sectionId) {
                     <tr>
                       <td><strong>${profile?.nombre || 'Sin nombre'} ${profile?.apellido || ''}</strong></td>
                       <td>${profile?.email || 'Sin email'}</td>
-                      <td><small>${new Date(enr.fecha_inscripcion).toLocaleDateString('es-ES')}</small></td>
+                      <td><small>${new Date(enr.enrollment_date).toLocaleDateString('es-ES')}</small></td>
                       <td><span class="badge bg-success">Activo</span></td>
                     </tr>
                   `
@@ -1579,7 +1579,7 @@ async function showGradeModal(enrollmentId, enrollment, onSuccess = null) {
             <form id="gradeForm">
               <div class="mb-3">
                 <label class="form-label">Calificación (0.0 - 5.0)</label>
-                <input type="number" class="form-control" id="gradeValue" min="0" max="5" step="0.1" value="${enrollment?.calificacion_final || ''}" required>
+                <input type="number" class="form-control" id="gradeValue" min="0" max="5" step="0.1" value="${enrollment?.final_grade || ''}" required>
               </div>
             </form>
           </div>
@@ -1608,7 +1608,7 @@ async function showGradeModal(enrollmentId, enrollment, onSuccess = null) {
 
     const { error } = await supabase
       .from('enrollments')
-      .update({ calificacion_final: calificacion })
+      .update({ final_grade: calificacion })
       .eq('id', enrollmentId)
 
     if (error) {

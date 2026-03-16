@@ -61,7 +61,7 @@ async function renderAvailableCourses(container, user) {
       .from('enrollments')
       .select('section_id')
       .eq('student_id', profileId)
-      .eq('estado', 'activo')
+      .eq('status', 'enrolled')
 
     const enrolledSectionIds = (currentEnrollments || []).map(e => e.section_id)
 
@@ -114,7 +114,7 @@ async function renderAvailableCourses(container, user) {
           .from('enrollments')
           .select('*', { count: 'exact', head: true })
           .eq('section_id', section.id)
-          .eq('estado', 'activo')
+          .eq('status', 'enrolled')
 
         const enrolledCount = count || 0
         const availableQuota = Math.max(0, section.cupo_maximo - enrolledCount)
@@ -631,7 +631,7 @@ async function showStudentCourseDetails(container, sectionId, enrollmentId, user
     .from('enrollments')
     .select('*', { count: 'exact', head: true })
     .eq('section_id', sectionId)
-    .eq('estado', 'activo')
+    .eq('status', 'enrolled')
 
   const schedules = section.schedules || []
   const teacherDisplayName = [teacher?.nombre, teacher?.apellido]
@@ -801,7 +801,7 @@ async function loadStudentGeneralTab(contentDiv, sectionId) {
     .from('enrollments')
     .select('*', { count: 'exact', head: true })
     .eq('section_id', sectionId)
-    .eq('estado', 'activo')
+    .eq('status', 'enrolled')
 
   const scheduleText = section.schedules?.length
     ? section.schedules.map(s => {
