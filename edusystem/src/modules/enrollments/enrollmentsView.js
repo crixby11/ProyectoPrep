@@ -178,8 +178,8 @@ export async function renderEnrollmentsView(container) {
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-center">
                 <div>
-                  <p class="text-muted mb-1">Activas</p>
-                  <h3 class="mb-0">${enrollments?.filter(e => e.estado === 'activo').length || 0}</h3>
+                  <p class="text-muted mb-1">Estudiantes</p>
+                  <h3 class="mb-0">${enrollments?.length || 0}</h3>
                 </div>
                 <div class="icon-box bg-success bg-opacity-10 text-success">
                   <i class="bi bi-check-circle fs-4"></i>
@@ -193,8 +193,8 @@ export async function renderEnrollmentsView(container) {
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-center">
                 <div>
-                  <p class="text-muted mb-1">Completadas</p>
-                  <h3 class="mb-0">${enrollments?.filter(e => e.estado === 'completado').length || 0}</h3>
+                  <p class="text-muted mb-1">Cursos únicos</p>
+                  <h3 class="mb-0">${new Set(enrollments?.map(e => e.section_id)).size || 0}</h3>
                 </div>
                 <div class="icon-box bg-info bg-opacity-10 text-info">
                   <i class="bi bi-trophy fs-4"></i>
@@ -208,8 +208,8 @@ export async function renderEnrollmentsView(container) {
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-center">
                 <div>
-                  <p class="text-muted mb-1">Retiradas</p>
-                  <h3 class="mb-0">${enrollments?.filter(e => e.estado === 'retirado').length || 0}</h3>
+                  <p class="text-muted mb-1">Docentes únicos</p>
+                  <h3 class="mb-0">${new Set(enrollments?.map(e => sectionMapGlobal[e.section_id]?.teacher_id)).size || 0}</h3>
                 </div>
                 <div class="icon-box bg-warning bg-opacity-10 text-warning">
                   <i class="bi bi-exclamation-triangle fs-4"></i>
@@ -253,7 +253,7 @@ export async function renderEnrollmentsView(container) {
                       <td>${section?.course?.nombre || 'No disponible'}</td>
                       <td><span class="badge bg-secondary">${section?.nombre || 'N/A'}</span></td>
                       <td>${new Date(enrollment.fecha_inscripcion).toLocaleDateString('es-HN')}</td>
-                      <td>${statusBadges[enrollment.estado] || enrollment.estado}</td>
+                      <td><span class=\"badge bg-success\">Activo</span></td>
                       <td>${enrollment.calificacion_final ? `<span class="badge ${enrollment.calificacion_final >= 3 ? 'bg-success' : 'bg-danger'}">${enrollment.calificacion_final}</span>` : '<span class="text-muted">Pendiente</span>'}</td>
                       <td>
                         <button class="btn btn-sm btn-outline-primary me-1" onclick="window.viewEnrollment('${enrollment.id}')">
@@ -571,7 +571,7 @@ async function viewEnrollmentDetails(enrollmentId) {
                         <p><strong>Fecha de Inscripción:</strong><br>${new Date(enrollment.fecha_inscripcion).toLocaleDateString('es-HN', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                       </div>
                       <div class="col-md-4">
-                        <p><strong>Estado:</strong><br><span class="badge ${enrollment.estado === 'activo' ? 'bg-success' : enrollment.estado === 'completado' ? 'bg-info' : 'bg-warning'}">${statusLabels[enrollment.estado] || enrollment.estado}</span></p>
+                        <p><strong>Estado:</strong><br><span class="badge bg-success">Activo</span></p>
                       </div>
                       <div class="col-md-4">
                         <p><strong>Calificación Final:</strong><br>${enrollment.calificacion_final ? `<span class="badge ${enrollment.calificacion_final >= 3 ? 'bg-success' : 'bg-danger'} fs-6">${enrollment.calificacion_final}</span>` : '<span class="text-muted">Pendiente</span>'}</p>

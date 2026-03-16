@@ -1141,7 +1141,7 @@ async function loadEstudiantes(sectionId) {
   // Primero obtener enrollments
   const { data: enrollments, error: enrollError } = await supabase
     .from('enrollments')
-    .select('id, student_id, fecha_inscripcion, estado')
+    .select('id, student_id, fecha_inscripcion')
     .eq('section_id', sectionId)
     .order('fecha_inscripcion', { ascending: false })
 
@@ -1207,18 +1207,13 @@ async function loadEstudiantes(sectionId) {
                   if (!profile) {
                     console.warn('No profile for enrollment:', enr)
                   }
-                  const statusBadge = enr.estado === 'activo'
-                    ? '<span class="badge bg-success">Activo</span>'
-                    : enr.estado === 'retirado'
-                    ? '<span class="badge bg-danger">Retirado</span>'
-                    : '<span class="badge bg-info">Completado</span>'
                   
                   return `
                     <tr>
                       <td><strong>${profile?.nombre || 'Sin nombre'} ${profile?.apellido || ''}</strong></td>
                       <td>${profile?.email || 'Sin email'}</td>
                       <td><small>${new Date(enr.fecha_inscripcion).toLocaleDateString('es-ES')}</small></td>
-                      <td>${statusBadge}</td>
+                      <td><span class="badge bg-success">Activo</span></td>
                     </tr>
                   `
                 }).join('')}
