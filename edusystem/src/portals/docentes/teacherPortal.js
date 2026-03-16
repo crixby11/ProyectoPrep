@@ -1120,12 +1120,12 @@ async function loadEstudiantes(sectionId) {
     .select(`
       id,
       student_id,
-      profiles(nombre, apellido, email),
+      student:student_id(profiles(nombre, apellido, email)),
       fecha_inscripcion,
       estado
     `)
     .eq('section_id', sectionId)
-    .order('profiles.apellido_paterno', { ascending: true })
+    .order('student.profiles.apellido', { ascending: true })
 
   if (error || !enrollments?.length) {
     container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No hay estudiantes inscritos</div>'
@@ -1151,7 +1151,7 @@ async function loadEstudiantes(sectionId) {
               </thead>
               <tbody>
                 ${enrollments.map(enr => {
-                  const profile = enr.profiles
+                  const profile = enr.student?.profiles
                   const statusBadge = enr.estado === 'activo'
                     ? '<span class="badge bg-success">Activo</span>'
                     : enr.estado === 'retirado'
